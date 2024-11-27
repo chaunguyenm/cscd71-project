@@ -13,10 +13,10 @@ int main()
   // rarray<std::complex<double>, 2> stft_dft = fft::stft_dft(signal, 8, 2);
   // std::cout << stft_dft << "\n";
 
-  // rarray<std::complex<double>, 2> stft_fft = fft::stft_fft(signal, 8, 2);
-  // std::cout << stft_fft << "\n";
+  rarray<std::complex<double>, 2> stft_fft = fft::stft_fft(signal, 8, 1);
+  std::cout << stft_fft << "\n";
 
-  fft::stft(signal, 8, 1);
+  fft::stft_ff(signal, 8, 1);
   // std::cout << stft_fft << "\n";
   // std::vector<std::complex<double>> signal = {
   //   std::complex<double>(0.0, 0.0),

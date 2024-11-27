@@ -7,7 +7,7 @@
 rarray<std::complex<double>, 2> fft::stft_dft(
     rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
 {
-  size_t spectrogram_size = ceil((vec.size() - window_size) / float(window_step));
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
@@ -47,7 +47,7 @@ rarray<std::complex<double>, 1> fft::dft(
 rarray<std::complex<double>, 2> fft::stft_fft(
     rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
 {
-  size_t spectrogram_size = ceil((vec.size() - window_size) / float(window_step));
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
@@ -65,88 +65,25 @@ rarray<std::complex<double>, 2> fft::stft_fft(
 rarray<std::complex<double>, 2> fft::stft(
     rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
 {
-  /*
-   * STEP 1: Create buffers M and M'
-   */
   size_t num_stages = log2(window_size) + 1;
-  size_t spectrogram_size = ceil((vec.size() - window_size) / float(window_step));
-  size_t buffer_rows = window_size / 2;
-  size_t buffer_cols = window_size / 2 - 1;
-
-  rarray<std::vector<std::complex<double>>, 2> M(buffer_rows, buffer_cols),
-      M_prime(buffer_rows, buffer_cols);
-  rarray<std::complex<double>, 2> fft0(window_size, num_stages),
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
       spectrogram(spectrogram_size, window_size);
   rarray<std::complex<double>, 1> exptable(window_size / 2);
 
-  /*
-   * STEP 2: Initialize M
-   */
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
   for (size_t i = 0; i < window_size; i++)
     subvec[i] = vec[i];
-  transform(subvec, fft0, exptable);
-  std::cout << fft0 << "\n";
-  // Set M to initial FFT
-  for (size_t i = 0; i < window_size / 2; i++)
-    M[i][0].push_back(vec[i + window_size / 2]);
-  for (size_t s = 1; s < num_stages - 1; s++)
-    for (size_t k = 0; k < window_size / pow(2, s + 1); k++)
-      for (size_t m = 0; m < pow(2, s); m++)
-        M[k][s].push_back(fft0[(2 * k + 1) * pow(2, s) + m][s]);
+  transform(subvec, fft, exptable);
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+  // std::cout << fft << "\n";
+  // std::cout << exptable << "\n";
+  // std::cout << spectrogram << "\n";
 
-  for (size_t r = 0; r < buffer_rows; r++)
-  {
-    for (size_t c = 0; c < buffer_cols; c++)
-    {
-      std::cout << r << "," << c << "=[";
-      for (const auto &elem : M[r][c])
-        std::cout << elem << ",";
-      std::cout << "] ";
-    }
-    std::cout << "\n";
-  }
-
-  /*
-   * STEP 3: Compute batches of N/2 FFTs
-   */
-  for (size_t n = 1; n < vec.size() - window_size + 1; n++)
-    for (size_t s = 1; s < num_stages; s++)
-    {
-      // Initialize temporary input buffer
-      rarray<std::vector<std::complex<double>>, 1> B0(window_size / 2);
-      rarray<std::vector<std::complex<double>>, 1> B1(window_size / 2);
-      rarray<size_t, 1> B2(window_size / 2);
-
-      for (size_t i = 0; i < window_size / 2; i++)
-      {
-        B0[i].push_back(vec[i + n + window_size - 1]);
-        B1[i] = M[i][s - 1];
-        B2[i] = s;
-
-        // std::cout << "B0[" << i << "]=" << vec[i + n + window_size - 1] << "\n";
-        // std::cout << "B1[" << i << "]=";
-        // for (const auto &element : M[i][s - 1])
-        //   std::cout << element << ", ";
-        // std::cout << "\n";
-        // std::cout << "B2[" << i << "]=" << s << "\n";
-      }
-
-      // std::cout << B0 << "\n";
-      // std::cout << B1 << "\n";
-      // std::cout << B2 << "\n";
-
-      // Parallel
-      for (size_t k = 0; k < pow(2, s) - 2; k++)
-      {
-        std::complex<double> xr = B0[0][k] * std::polar(1.0, -2. * PI * 0 / n);
-        std::complex<double> x0 = B1[0][k] + xr;
-        std::complex<double> x1 = B1[0][k] - xr;
-
-        // std::cout << x0 << " " << x1 << "\n";
-      }
-    }
+  // Prepare buffer for next window
+  fft[0][window_size - 1] = fft[0][1];
 
   return spectrogram;
 }
@@ -258,10 +195,10 @@ bool fft::transform(rarray<std::complex<double>, 1> &vec,
         vec[j] += temp;
         fft[j][log2(size)] = vec[j];
         fft[l][log2(size)] = vec[l];
-        // std::cout << j << "," << log2(size) << "=" << exptable[k] << " ";
-        // std::cout << l << "," << log2(size) << "=" << exptable[k] << " ";
+        std::cout << j << "," << log2(size) << "=" << exptable[k] << " ";
+        std::cout << l << "," << log2(size) << "=" << exptable[k] << " ";
       }
-      // std::cout << "\n";
+      std::cout << "\n";
     }
     if (size == n) // Prevent overflow in 'size *= 2'
       break;
@@ -276,4 +213,71 @@ size_t fft::reverse_bits(size_t val, int width)
   for (int i = 0; i < width; i++, val >>= 1)
     result = (result << 1) | (val & 1U);
   return result;
+}
+
+rarray<std::complex<double>, 2> fft::stft_ff(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t num_stages = log2(window_size) + 1;
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
+      spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> exptable(window_size / 2);
+  rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
+
+  // Perform FFT on 1st N signals
+  rarray<std::complex<double>, 1> subvec(window_size);
+  for (size_t i = 0; i < window_size; i++)
+    subvec[i] = vec[i];
+  transform(subvec, fft, exptable);
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+  std::cout << fft << "\n";
+
+  // Prepare buffer
+  for (size_t stage = 0; stage < num_stages; stage++)
+  {
+    size_t count = 1 << stage;
+    for (size_t r = 0; (2 * r + 1) * count < window_size; r++)
+    {
+      size_t buffer_idx = reverse_bits(r, window_size / 4);
+      for (size_t c = 0; c < count; c++)
+        buffer[buffer_idx + c][stage] = fft[(2 * r + 1) * count + c][stage];
+    }
+  }
+  // std::cout << buffer << "\n";
+
+  for (size_t i = 1; i + window_size - 1 < vec.size(); i++)
+  {
+    // std::cout << "i=" << i << "\n";
+    for (size_t s = 1; s < num_stages; s++)
+    {
+      size_t m = (i - 1) % (window_size / (1 << s));
+      size_t count = 1 << (s - 1);
+      // std::cout << "s=" << s << " m=" << m << " count=" << count << "\n";
+      for (size_t k = 0; k < count; k++)
+      {
+        std::complex<double> xr;
+        if (s == 1)
+        {
+          xr = vec[i + window_size - 1];
+          fft[window_size - (1 << (s-1)) + k][s - 1] = xr;
+        }
+        else
+          xr = fft[window_size - (1 << (s-1)) + k][s - 1];
+        // std::cout << "k=" << k << " xr=" << xr << " buffer=" << buffer[m + k][s - 1] << "\n";
+        // std::cout << "addition=[" << window_size - (1 << s) + k << "," << s << "]" << "\n";
+        // std::cout << "subtraction=[" << window_size - (1 << s) + k + count << "," << s << "]" << "\n";
+        fft[window_size - (1 << s) + k][s] = buffer[m + k][s - 1] + xr;
+        fft[window_size - (1 << s) + k + count][s] = buffer[m + k][s - 1] - xr;
+      }
+      for (size_t k = 0; k < count; k++)
+        buffer[m + k][s - 1] = fft[window_size - (1 << (s-1)) + k][s - 1];
+    }
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = fft[j][num_stages - 1];
+  }
+
+  std::cout << spectrogram << "\n";
+  return spectrogram;
 }

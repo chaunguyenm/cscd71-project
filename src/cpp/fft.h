@@ -15,6 +15,8 @@ namespace fft
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
   rarray<std::complex<double>, 2> stft(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
+  rarray<std::complex<double>, 2> stft_ff(
+      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
 
   rarray<std::complex<double>, 1> dft(
       const rarray<std::complex<double>, 1> &signal,
