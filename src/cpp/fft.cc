@@ -79,7 +79,7 @@ rarray<std::complex<double>, 2> fft::stft_ff(
   transform(subvec, fft, tw);
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
-  std::cout << "twiddle:\n" << tw << "\n";
+  // std::cout << "twiddle:\n" << tw << "\n";
 
   // Prepare buffer
   for (size_t stage = 0; stage < num_stages; stage++)
@@ -92,16 +92,13 @@ rarray<std::complex<double>, 2> fft::stft_ff(
         buffer[buffer_idx + c][stage] = fft[(2 * r + 1) * count + c][stage];
     }
   }
-  // std::cout << buffer << "\n";
 
   for (size_t i = 1; i + window_size - 1 < vec.size(); i++)
   {
-    std::cout << "i=" << i << "\n";
     for (size_t s = 1; s < num_stages; s++)
     {
       size_t count = 1 << (s - 1);
       size_t m = ((i - 1) % (window_size / (1 << s))) * count;
-      std::cout << "s=" << s << " m=" << m << " count=" << count << "\n";
       for (size_t k = 0; k < count; k++)
       {
         std::complex<double> xr;
@@ -112,23 +109,16 @@ rarray<std::complex<double>, 2> fft::stft_ff(
         }
         else
           xr = fft[window_size - (1 << (s-1)) + k][s - 1];
-        std::cout << "k=" << k << " xr=" << xr << " buffer=" << buffer[m + k][s - 1] << "\n";
-        std::cout << "addition=[" << window_size - (1 << s) + k << "," << s << "]" << "\n";
-        std::cout << "subtraction=[" << window_size - (1 << s) + k + count << "," << s << "]" << "\n";
-        std::cout << "twiddle=" << tw[window_size - (1 << s) + k][s - 1] << "=" << tw[window_size - (1 << s) + k + count][s - 1] << "\n";
         fft[window_size - (1 << s) + k][s] = buffer[m + k][s - 1] + tw[window_size - (1 << s) + k][s - 1] * xr;
         fft[window_size - (1 << s) + k + count][s] = buffer[m + k][s - 1] - tw[window_size - (1 << s) + k + count][s - 1] * xr;
       }
       for (size_t k = 0; k < count; k++)
         buffer[m + k][s - 1] = fft[window_size - (1 << (s-1)) + k][s - 1];
-      std::cout << "fft:\n" << fft << "\n";
-      std::cout << "buffer:\n" << buffer << "\n";
     }
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = fft[j][num_stages - 1];
   }
-
-  std::cout << spectrogram << "\n";
+  
   return spectrogram;
 }
 
