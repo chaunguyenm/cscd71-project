@@ -13,8 +13,6 @@ namespace fft
       size_t window_size, size_t window_step);
   rarray<std::complex<double>, 2> stft_fft(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
-  rarray<std::complex<double>, 2> stft(
-      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
   rarray<std::complex<double>, 2> stft_ff(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
 
@@ -29,7 +27,7 @@ namespace fft
   bool transform(rarray<std::complex<double>, 1> &vec);
   bool transform(rarray<std::complex<double>, 1> &vec,
                  rarray<std::complex<double>, 2> &fft,
-                 rarray<std::complex<double>, 1> &exptable);
+                 rarray<std::complex<double>, 2> &tw);
 }
 
 #endif
