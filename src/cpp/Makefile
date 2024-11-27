@@ -9,13 +9,13 @@ INCLUDE = -I./include
 all: main 
 
 main.o: main.cc
-	$(CXX) $(INCLUDE) -c $(CXXFLAGS) -o $@ $<
+	$(CXX) $(INCLUDE) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
 
 fft.o: fft.cc fft.h
-	$(CXX) $(INCLUDE) -c $(CXXFLAGS) -o $@ $<
+	$(CXX) $(INCLUDE) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
 
 main: ${OBJS}
-	$(CXX) $(INCLUDE) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$(CXX) $(INCLUDE) $(LDFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
 
 clean:
 	$(RM) $(OBJS)
