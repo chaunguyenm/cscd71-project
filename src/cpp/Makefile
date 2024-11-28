@@ -1,26 +1,32 @@
 CXX = g++
-CXXFLAGS = -O2 -march=native -std=c++17 -g -Wall
+MPICXX = mpicxx
+CXXFLAGS = -O2 -march=native -std=c++17 -g -Wall -Wunknown-pragmas
 LDFLAGS = -g
 OMPFLAGS = -fopenmp
 GPROFFLAGS = -g -pg
-OBJS = main.o fft.o
 INCLUDE = -I./include
 
-all: main 
+all: main main-mpi
+
+main: main.o fft.o
+	$(CXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
+
+main-mpi: main.o fft-mpi.o
+	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
 
 main.o: main.cc
-	$(CXX) $(INCLUDE) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
+	$(CXX) $(INCLUDE) $(GPROFFLAGS) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
 
 fft.o: fft.cc fft.h
-	$(CXX) $(INCLUDE) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
+	$(CXX) $(INCLUDE) $(GPROFFLAGS) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
 
-main: ${OBJS}
-	$(CXX) $(INCLUDE) $(LDFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
+fft-mpi.o: fft.cc fft.h
+	$(MPICXX) $(INCLUDE) $(GPROFFLAGS) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
 
 clean:
-	$(RM) $(OBJS)
+	$(RM) main.o main-mpi.o fft.o fft-mpi.o
 
 distclean: clean
-	$(RM) traffic traffic-????.npy traffic.png test-????.npy largetest-????.npy test.png largetest.png
+	$(RM) main main-mpi
 
 .PHONY: all clean distclean run 
