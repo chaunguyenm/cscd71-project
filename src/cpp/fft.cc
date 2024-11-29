@@ -134,9 +134,9 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
   rarray<std::complex<double>, 2> tw(window_size, num_stages - 1);
   rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
 
-  rarray<std::vector<std::complex<double>>, 2>
-      M(window_size / 2, num_stages - 1),
-      M_prime(window_size / 2, num_stages - 1);
+  rarray<std::complex<double>, 3>
+      M(window_size / 2, num_stages - 1, window_size / 2),
+      M_prime(window_size / 2, num_stages - 1, window_size / 2);
 
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
@@ -147,44 +147,38 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
 #pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
-  // std::cout << fft << "\n";
+  std::cout << fft << "\n";
 
-  // Initialize M
-#pragma omp paralle for default(none) shared(num_stages, window_size, M, fft)
+    // Initialize M
+#pragma omp parallel for default(none) shared(num_stages, window_size, M, fft)
   for (size_t s = 0; s < num_stages - 1; s++)
   {
     size_t num_rows = window_size / (1 << (s + 1));
     for (size_t k = 0; k < num_rows; k++)
     {
       size_t row_idx = reverse_bits(k, log2(num_rows));
-      // std::cout << "row=" << row_idx << " col=" << s << " ";
       for (size_t m = 0; m < (1 << s); m++)
       {
-        M[row_idx][s].push_back(fft[(2 * k + 1) * (1 << s) + m][s]);
-        // std::cout << fft[(2 * k + 1) * (1 << s) + m][s] << " ";
+        M[row_idx][s][m] = fft[(2 * k + 1) * (1 << s) + m][s];
       }
-      // std::cout << "\n";
     }
   }
+  std::cout << "init M " << M << "\n";
 
   for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
   {
     for (size_t s = 0; s < num_stages - 1; s++)
     {
-      rarray<std::vector<std::complex<double>>, 2> B(window_size / 2, 2);
+      rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
       for (size_t i = 0; i < window_size / 2; i++)
       {
-        std::vector<std::complex<double>> lambda;
-        for (const auto &element : M[i][s])
-        {
-          B[i][1].push_back(element);
-          // std::cout << element << "\n";
-        }
+        for (size_t idx = 0; idx < window_size / 2; idx++)
+          B[i][1][idx] = M[i][s][idx];
 
         if (s == 0)
         {
-          lambda.push_back(vec[n + window_size - 1 + i]);
-          M_prime[i][s].push_back(vec[n + window_size - 1 + i]);
+          B[i][0][0] = vec[n + window_size - 1 + i];
+          M_prime[i][s][0] = vec[n + window_size - 1 + i];
         }
         else
         {
@@ -192,27 +186,19 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
           if (start_idx >= window_size / 2)
           {
             start_idx = start_idx % (window_size / 2);
-            lambda = M_prime[start_idx][s];
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M_prime[start_idx][s][idx];
           }
           else
-            lambda = M[start_idx][s];
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M[start_idx][s][idx];
         }
-        for (const auto &element : lambda)
-          B[i][0].push_back(element);
 
-        // std::cout << "B[" << i << ",0] ";
-        // for (const auto &element : B[i][0])
-        //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
-        // std::cout << "\n";
-        // std::cout << "B[" << i << ",1] ";
-        // for (const auto &element : B[i][1])
-        //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
-        // std::cout << "\n";
-        // std::cout << "done\n";
+        std::cout << "B " << B << "\n";
       }
 
       // Parallel B
-// #pragma omp parallel default(none) shared(window_size, num_stages, n, s, tw, B, M, M_prime, spectrogram)
+      // #pragma omp parallel default(none) shared(window_size, num_stages, n, s, tw, B, M, M_prime, spectrogram)
       for (size_t i = 0; i < window_size / 2; i++)
       {
         size_t col_idx = s + 1;
@@ -220,18 +206,7 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
         if (col_idx < num_stages - 1)
         {
           size_t start_idx = i + (window_size / (1 << (col_idx + 1)));
-          std::vector<std::complex<double>> *f;
-          if (start_idx >= window_size / 2)
-          {
-            start_idx = start_idx % (window_size / 2);
-            f = &M_prime[start_idx][col_idx];
-            // std::cout << "M'[" << start_idx << "," << col_idx << "] ";
-          }
-          else
-          {
-            f = &M[start_idx][col_idx];
-            // std::cout << "M[" << start_idx << "," << col_idx << "] ";
-          }
+          rarray<std::complex<double>, 1> f(window_size / 2);
 
           for (size_t k = 0; k < count; k++)
           {
@@ -240,32 +215,43 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
             x0 = B[i][1].at(k) + xr;
             x1 = B[i][1].at(k) - xr;
 
-            f->insert(f->begin() + k, x0);
-            f->push_back(x1);
+            f[k] = x0;
+            f[k + count] = x1;
           }
-          // for (const auto &element : (*f))
-          //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
-          // std::cout << "\n";
+
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M_prime[start_idx][col_idx][idx] = f[idx];
+          }
+          else
+          {
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M[start_idx][col_idx][idx] = f[idx];
+          }
+          std::cout << "updated M " << M << "\n";
+          std::cout << "updated M' " << M_prime << "\n";
         }
         else
         {
           for (size_t k = 0; k < count; k++)
           {
             std::complex<double> xr, x0, x1;
-            xr = B[i][0].at(k) * tw[window_size - (1 << (s + 1)) + k][s];
-            x0 = B[i][1].at(k) + xr;
-            x1 = B[i][1].at(k) - xr;
+            xr = B[i][0][k] * tw[window_size - (1 << (s + 1)) + k][s];
+            x0 = B[i][1][k] + xr;
+            x1 = B[i][1][k] - xr;
 
             spectrogram[n + i][k] = x0;
             spectrogram[n + i][k + window_size / 2] = x1;
           }
-          // std::cout << spectrogram;
+          std::cout << "spectrogram " << spectrogram << "\n";
         }
       }
     }
 
     M = M_prime;
-    rarray<std::vector<std::complex<double>>, 2> m(window_size / 2, window_size / 2 - 1);
+    rarray<std::complex<double>, 3> m(window_size / 2, num_stages - 1, window_size / 2);
     M_prime = m;
   }
   return spectrogram;
