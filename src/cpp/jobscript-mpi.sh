@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=4
-#SBATCH --cpus-per-task=16
+#SBATCH --ntasks-per-node=2
+#SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
 #SBATCH --job-name stft_mpi_job
 #SBATCH --output=stft_mpi_output_%j.txt

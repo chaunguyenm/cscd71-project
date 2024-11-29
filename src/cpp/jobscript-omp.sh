@@ -1,9 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=04:00:00
-#SBATCH --job-name stft_job
-#SBATCH --output=stft_output_%j.txt
+#SBATCH --job-name stft_omp_job
+#SBATCH --output=stft_omp_output_%j.txt
 #SBATCH --mail-type=FAIL
 
 cd $SLURM_SUBMIT_DIR

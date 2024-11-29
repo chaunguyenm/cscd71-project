@@ -41,4 +41,15 @@ namespace fft_mpi
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
 }
 
+namespace fft_hybrid
+{
+  rarray<std::complex<double>, 2> stft_dft(
+      rarray<std::complex<double>, 1> &vec,
+      size_t window_size, size_t window_step);
+  rarray<std::complex<double>, 2> stft_fft(
+      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
+  rarray<std::complex<double>, 2> stft_ff(
+      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
+}
+
 #endif

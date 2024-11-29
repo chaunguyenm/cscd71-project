@@ -44,14 +44,14 @@ int main(int argc, char *argv[])
     fprintf(stdout, "usage: %s [-h] [-a algorithm] [-p parallel] "
                     "[-o output] [num-samples] [window-size]\n",
             argv[0]);
-    fprintf(stdout, "num-samples\tlong long, size of input signal\n");
-    fprintf(stdout, "window-size\tlong long, less than num-samples, power of 2, size of stft window\n");
+    fprintf(stdout, "num-samples\tlong, size of input signal\n");
+    fprintf(stdout, "window-size\tlong, less than num-samples, power of 2, size of stft window\n");
     fprintf(stdout, "-h\thelp\n");
     fprintf(stdout, "-a\tshort time fourier transform algorithm: "
                     "dft, fft (default), ff\n");
     fprintf(stdout, "-p\tparallel scheme: omp (default), "
-		    "mpi (must be run with mpirun), "
-		    "hybrid (omp + mpi, must be run with mpirun)\n");
+                    "mpi (must be run with mpirun), "
+                    "hybrid (omp + mpi, must be run with mpirun)\n");
     fprintf(stdout, "-o\toutput file: "
                     "[/path/to/file]\n");
     return 1;
@@ -63,11 +63,11 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  long long num_samples = -1;
-  long long window_size = -1;
+  unsigned long num_samples = 0;
+  unsigned long window_size = 0;
   try
   {
-    num_samples = std::stoll(*(argv + optind));
+    num_samples = std::stoul(*(argv + optind));
   }
   catch (std::invalid_argument const &arg)
   {
@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
   }
   try
   {
-    window_size = std::stoll(*(argv + optind + 1));
+    window_size = std::stoul(*(argv + optind + 1));
   }
   catch (std::invalid_argument const &arg)
   {
@@ -91,6 +91,22 @@ int main(int argc, char *argv[])
   catch (std::out_of_range const &arg)
   {
     fprintf(stderr, "Out of range arguments [window-size]. See -h for usage.\n");
+    return 1;
+  }
+
+  if (num_samples < window_size)
+  {
+    fprintf(stderr, "num-samples must be greater than window-size. See -h for usage.\n");
+    return 1;
+  }
+  if (window_size == 0 || num_samples == 0)
+  {
+    fprintf(stderr, "num-samples and window-size must be positive. See -h for usage.\n");
+    return 1;
+  }
+  if ((window_size & (window_size - 1)) != 0)
+  {
+    fprintf(stderr, "window-size must be power of 2. See -h for usage.\n");
     return 1;
   }
 
@@ -106,29 +122,44 @@ int main(int argc, char *argv[])
   {
     rarray<std::complex<double>, 2> stft;
     if (algorithm != NULL && strncmp((const char *)algorithm,
-				     "dft", strlen("dft")) == 0)
+                                     "dft", strlen("dft")) == 0)
     {
-       // std::cout << "dft\n";
-       if (parallel != NULL && strncmp((const char *)parallel,
-				       "mpi", strlen("mpi")) == 0)
-         stft = fft_mpi::stft_dft(signal, window_size, 1);
-       else
-         stft = fft::stft_dft(signal, window_size, 1);
-    }
-    else if (algorithm != NULL && strncmp((const char *)algorithm,
-				          "fft", strlen("fft")) == 0)
-    {
-      // std::cout << "fft\n"; 
       if (parallel != NULL && strncmp((const char *)parallel,
-				      "mpi", strlen("mpi")) == 0)
-        stft = fft_mpi::stft_fft(signal, window_size, 1);
+                                      "mpi", strlen("mpi")) == 0)
+        stft = fft_mpi::stft_dft(signal, window_size, 1);
+      else if (parallel != NULL && strncmp((const char *)parallel,
+                                           "omp", strlen("omp")) == 0)
+        stft = fft::stft_dft(signal, window_size, 1);
+      else if (parallel != NULL && strncmp((const char *)parallel,
+                                           "hybrid", strlen("hybrid")) == 0)
+        stft = fft_hybrid::stft_dft(signal, window_size, 1);
       else
-        stft = fft::stft_fft(signal, window_size, 1);
+      {
+        std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
+        return 1;
+      }
     }
     else if (algorithm != NULL && strncmp((const char *)algorithm,
-					  "ff", strlen("ff")) == 0)
+                                          "fft", strlen("fft")) == 0)
     {
-      // std::cout << "ff\n";
+      if (parallel != NULL && strncmp((const char *)parallel,
+                                      "mpi", strlen("mpi")) == 0)
+        stft = fft_mpi::stft_fft(signal, window_size, 1);
+      else if (parallel != NULL && strncmp((const char *)parallel,
+                                           "omp", strlen("omp")) == 0)
+        stft = fft::stft_fft(signal, window_size, 1);
+      else if (parallel != NULL && strncmp((const char *)parallel,
+                                           "hybrid", strlen("hybrid")) == 0)
+        stft = fft_hybrid::stft_fft(signal, window_size, 1);
+      else
+      {
+        std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
+        return 1;
+      }
+    }
+    else if (algorithm != NULL && strncmp((const char *)algorithm,
+                                          "ff", strlen("ff")) == 0)
+    {
       stft = fft::stft_ff(signal, window_size, 1);
     }
     else
@@ -136,9 +167,8 @@ int main(int argc, char *argv[])
       std::cout << "Unrecognized algorithm. See -h for usage.\n";
       return 1;
     }
-    // std::cout << stft << "\n";
+    std::cout << stft << "\n";
   }
-  
+
   return 0;
 }
-

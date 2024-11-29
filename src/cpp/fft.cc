@@ -27,10 +27,6 @@ rarray<std::complex<double>, 1> fft::dft(
     const rarray<std::complex<double>, 1> &signal,
     size_t vec_begin, size_t vec_size)
 {
-  if (vec_size == 0)
-    vec_size = signal.size();
-  size_t vec_end = vec_begin + vec_size;
-
   rarray<std::complex<double>, 1> output(vec_size);
 #pragma omp parallel for default(none) shared(signal, vec_begin, vec_size, output)
   for (size_t k = 0; k < vec_size; k++)
@@ -110,8 +106,10 @@ rarray<std::complex<double>, 2> fft::stft_ff(
         }
         else
           xr = fft[window_size - (1 << (s - 1)) + k][s - 1];
-        fft[window_size - (1 << s) + k][s] = buffer[m + k][s - 1] + tw[window_size - (1 << s) + k][s - 1] * xr;
-        fft[window_size - (1 << s) + k + count][s] = buffer[m + k][s - 1] - tw[window_size - (1 << s) + k + count][s - 1] * xr;
+        fft[window_size - (1 << s) + k][s] =
+            buffer[m + k][s - 1] + tw[window_size - (1 << s) + k][s - 1] * xr;
+        fft[window_size - (1 << s) + k + count][s] =
+            buffer[m + k][s - 1] - tw[window_size - (1 << s) + k + count][s - 1] * xr;
       }
       for (size_t k = 0; k < count; k++)
         buffer[m + k][s - 1] = fft[window_size - (1 << (s - 1)) + k][s - 1];
@@ -152,7 +150,7 @@ bool fft::transform(rarray<std::complex<double>, 1> &vec)
   for (size_t i = 0; i < n / 2; i++)
     exptable[i] = std::polar(1.0, -2. * PI * i / n);
 
-  // Bit-reversed addressing permutation
+    // Bit-reversed addressing permutation
 #pragma omp parallel for default(none) shared(levels, vec, n)
   for (size_t i = 0; i < n; i++)
   {
@@ -205,7 +203,7 @@ bool fft::transform(rarray<std::complex<double>, 1> &vec,
   for (size_t i = 0; i < n / 2; i++)
     exptable[i] = std::polar(1.0, -2. * PI * i / n);
 
-  // Bit-reversed addressing permutation
+    // Bit-reversed addressing permutation
 #pragma omp parallel for default(none) shared(vec, levels, n)
   for (size_t i = 0; i < n; i++)
   {
@@ -263,6 +261,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size;
+  MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -281,10 +280,14 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
     for (int p = 1; p < size; p++)
     {
       size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
-      MPI_Recv(&spectrogram[p * chunk_size][0], received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(&spectrogram[p * chunk_size][0],
+               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
   else
-    MPI_Send(&spectrogram[start_idx][0], (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0, MPI_COMM_WORLD);
+    MPI_Send(&spectrogram[start_idx][0],
+             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
+             MPI_COMM_WORLD);
 
   MPI_Finalize();
 
@@ -298,6 +301,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size;
+  MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -316,12 +320,99 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
     for (int p = 1; p < size; p++)
     {
       size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
-      MPI_Recv(&spectrogram[p * chunk_size][0], received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(&spectrogram[p * chunk_size][0],
+               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
   else
-    MPI_Send(&spectrogram[start_idx][0], (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0, MPI_COMM_WORLD);
+    MPI_Send(&spectrogram[start_idx][0],
+             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
+             MPI_COMM_WORLD);
 
   MPI_Finalize();
-    
+
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
+    rarray<std::complex<double>, 1> &vec,
+    size_t window_size, size_t window_step)
+{
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+
+  int rank, size, provided;
+  MPI_Init_thread(NULL, NULL, MPI_THREAD_FUNNELED, &provided);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  size_t chunk_size = spectrogram_size / size;
+  size_t start_idx = rank * chunk_size;
+  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
+
+#pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
+  for (size_t i = start_idx; i < end_idx; i++)
+  {
+    rarray<std::complex<double>, 1> dft = fft::dft(vec, i * window_step, window_size);
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = dft[j];
+  }
+
+  if (rank == 0)
+    for (int p = 1; p < size; p++)
+    {
+      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
+      MPI_Recv(&spectrogram[p * chunk_size][0],
+               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+  else
+    MPI_Send(&spectrogram[start_idx][0],
+             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
+             MPI_COMM_WORLD);
+
+  MPI_Finalize();
+
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+
+  int rank, size, provided;
+  MPI_Init_thread(NULL, NULL, MPI_THREAD_FUNNELED, &provided);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  size_t chunk_size = spectrogram_size / size;
+  size_t start_idx = rank * chunk_size;
+  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
+
+#pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
+  for (size_t i = start_idx; i < end_idx; i++)
+  {
+    rarray<std::complex<double>, 1> fft = fft::fft(vec, i * window_step, window_size);
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = fft[j];
+  }
+
+  if (rank == 0)
+    for (int p = 1; p < size; p++)
+    {
+      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
+      MPI_Recv(&spectrogram[p * chunk_size][0],
+               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+  else
+    MPI_Send(&spectrogram[start_idx][0],
+             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
+             MPI_COMM_WORLD);
+
+  MPI_Finalize();
+
   return spectrogram;
 }
