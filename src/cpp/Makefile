@@ -1,6 +1,6 @@
 CXX = g++
 MPICXX = mpicxx
-CXXFLAGS = -O2 -march=native -std=c++17 -g -Wall -Wno-unknown-pragmas
+CXXFLAGS = -O2 -march=native -std=c++17 -g -Wall -Wno-unknown-pragmas -Wno-sign-compare
 LDFLAGS = -g
 OMPFLAGS = -fopenmp
 GPROFFLAGS = -g -pg

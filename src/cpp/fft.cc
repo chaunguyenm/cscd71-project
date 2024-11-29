@@ -72,13 +72,16 @@ rarray<std::complex<double>, 2> fft::stft_ff(
 
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
+#pragma omp parallel for default(none) shared(window_size, subvec, vec)
   for (size_t i = 0; i < window_size; i++)
     subvec[i] = vec[i];
   transform(subvec, fft, tw);
+#pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
 
-  // Prepare buffer
+    // Prepare buffer
+#pragma omp paralel for default(none) shared(num_stages, window_size, buffer, fft)
   for (size_t stage = 0; stage < num_stages; stage++)
   {
     size_t count = 1 << stage;
@@ -118,6 +121,153 @@ rarray<std::complex<double>, 2> fft::stft_ff(
       spectrogram[i][j] = fft[j][num_stages - 1];
   }
 
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> fft::stft_qpff(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t num_stages = log2(window_size) + 1;
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
+      spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 2> tw(window_size, num_stages - 1);
+  rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
+
+  rarray<std::vector<std::complex<double>>, 2>
+      M(window_size / 2, num_stages - 1),
+      M_prime(window_size / 2, num_stages - 1);
+
+  // Perform FFT on 1st N signals
+  rarray<std::complex<double>, 1> subvec(window_size);
+#pragma omp parallel for default(none) shared(window_size, subvec, vec)
+  for (size_t i = 0; i < window_size; i++)
+    subvec[i] = vec[i];
+  transform(subvec, fft, tw);
+#pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+  // std::cout << fft << "\n";
+
+  // Initialize M
+#pragma omp paralle for default(none) shared(num_stages, window_size, M, fft)
+  for (size_t s = 0; s < num_stages - 1; s++)
+  {
+    size_t num_rows = window_size / (1 << (s + 1));
+    for (size_t k = 0; k < num_rows; k++)
+    {
+      size_t row_idx = reverse_bits(k, log2(num_rows));
+      // std::cout << "row=" << row_idx << " col=" << s << " ";
+      for (size_t m = 0; m < (1 << s); m++)
+      {
+        M[row_idx][s].push_back(fft[(2 * k + 1) * (1 << s) + m][s]);
+        // std::cout << fft[(2 * k + 1) * (1 << s) + m][s] << " ";
+      }
+      // std::cout << "\n";
+    }
+  }
+
+  for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
+  {
+    for (size_t s = 0; s < num_stages - 1; s++)
+    {
+      rarray<std::vector<std::complex<double>>, 2> B(window_size / 2, 2);
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        std::vector<std::complex<double>> lambda;
+        for (const auto &element : M[i][s])
+        {
+          B[i][1].push_back(element);
+          // std::cout << element << "\n";
+        }
+
+        if (s == 0)
+        {
+          lambda.push_back(vec[n + window_size - 1 + i]);
+          M_prime[i][s].push_back(vec[n + window_size - 1 + i]);
+        }
+        else
+        {
+          size_t start_idx = i + window_size / (1 << (s + 1));
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            lambda = M_prime[start_idx][s];
+          }
+          else
+            lambda = M[start_idx][s];
+        }
+        for (const auto &element : lambda)
+          B[i][0].push_back(element);
+
+        // std::cout << "B[" << i << ",0] ";
+        // for (const auto &element : B[i][0])
+        //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
+        // std::cout << "\n";
+        // std::cout << "B[" << i << ",1] ";
+        // for (const auto &element : B[i][1])
+        //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
+        // std::cout << "\n";
+        // std::cout << "done\n";
+      }
+
+      // Parallel B
+// #pragma omp parallel default(none) shared(window_size, num_stages, n, s, tw, B, M, M_prime, spectrogram)
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        size_t col_idx = s + 1;
+        size_t count = (1 << s);
+        if (col_idx < num_stages - 1)
+        {
+          size_t start_idx = i + (window_size / (1 << (col_idx + 1)));
+          std::vector<std::complex<double>> *f;
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            f = &M_prime[start_idx][col_idx];
+            // std::cout << "M'[" << start_idx << "," << col_idx << "] ";
+          }
+          else
+          {
+            f = &M[start_idx][col_idx];
+            // std::cout << "M[" << start_idx << "," << col_idx << "] ";
+          }
+
+          for (size_t k = 0; k < count; k++)
+          {
+            std::complex<double> xr, x0, x1;
+            xr = B[i][0].at(k) * tw[window_size - (1 << (s + 1)) + k][s];
+            x0 = B[i][1].at(k) + xr;
+            x1 = B[i][1].at(k) - xr;
+
+            f->insert(f->begin() + k, x0);
+            f->push_back(x1);
+          }
+          // for (const auto &element : (*f))
+          //   std::cout << "(" << element.real() << ", " << element.imag() << ") ";
+          // std::cout << "\n";
+        }
+        else
+        {
+          for (size_t k = 0; k < count; k++)
+          {
+            std::complex<double> xr, x0, x1;
+            xr = B[i][0].at(k) * tw[window_size - (1 << (s + 1)) + k][s];
+            x0 = B[i][1].at(k) + xr;
+            x1 = B[i][1].at(k) - xr;
+
+            spectrogram[n + i][k] = x0;
+            spectrogram[n + i][k + window_size / 2] = x1;
+          }
+          // std::cout << spectrogram;
+        }
+      }
+    }
+
+    M = M_prime;
+    rarray<std::vector<std::complex<double>>, 2> m(window_size / 2, window_size / 2 - 1);
+    M_prime = m;
+  }
   return spectrogram;
 }
 

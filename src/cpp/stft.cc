@@ -162,6 +162,11 @@ int main(int argc, char *argv[])
     {
       stft = fft::stft_ff(signal, window_size, 1);
     }
+    else if (algorithm != NULL && strncmp((const char *)algorithm,
+                                          "qpff", strlen("qpff")) == 0)
+    {
+      stft = fft::stft_qpff(signal, window_size, 1);
+    }
     else
     {
       std::cout << "Unrecognized algorithm. See -h for usage.\n";
