@@ -30,6 +30,9 @@ namespace fft
   bool transform(rarray<std::complex<double>, 1> &vec,
                  rarray<std::complex<double>, 2> &fft,
                  rarray<std::complex<double>, 2> &tw);
+  rarray<std::complex<double>, 2> stft_qpff_batch(
+      rarray<std::complex<double>, 3> B, rarray<std::complex<double>, 2> tw,
+      size_t window_size, size_t s);
 }
 
 namespace fft_mpi

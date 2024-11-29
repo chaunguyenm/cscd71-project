@@ -194,52 +194,32 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       }
 
       // Parallel B
-      // #pragma omp parallel default(none) shared(window_size, num_stages, n, s, tw, B, M, M_prime, spectrogram)
+      rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+      f = fft::stft_qpff_batch(B, tw, window_size, s);
+
       for (size_t i = 0; i < window_size / 2; i++)
       {
         size_t col_idx = s + 1;
-        size_t count = (1 << s);
+
         if (col_idx < num_stages - 1)
         {
           size_t start_idx = i + (window_size / (1 << (col_idx + 1)));
-          rarray<std::complex<double>, 1> f(window_size / 2);
-
-          for (size_t k = 0; k < count; k++)
-          {
-            std::complex<double> xr, x0, x1;
-            xr = B[i][0].at(k) * tw[window_size - (1 << (s + 1)) + k][s];
-            x0 = B[i][1].at(k) + xr;
-            x1 = B[i][1].at(k) - xr;
-
-            f[k] = x0;
-            f[k + count] = x1;
-          }
 
           if (start_idx >= window_size / 2)
           {
             start_idx = start_idx % (window_size / 2);
             for (size_t idx = 0; idx < window_size / 2; idx++)
-              M_prime[start_idx][col_idx][idx] = f[idx];
+              M_prime[start_idx][col_idx][idx] = f[i][idx];
           }
           else
           {
             for (size_t idx = 0; idx < window_size / 2; idx++)
-              M[start_idx][col_idx][idx] = f[idx];
+              M[start_idx][col_idx][idx] = f[i][idx];
           }
         }
         else
-        {
-          for (size_t k = 0; k < count; k++)
-          {
-            std::complex<double> xr, x0, x1;
-            xr = B[i][0][k] * tw[window_size - (1 << (s + 1)) + k][s];
-            x0 = B[i][1][k] + xr;
-            x1 = B[i][1][k] - xr;
-
-            spectrogram[n + i][k] = x0;
-            spectrogram[n + i][k + window_size / 2] = x1;
-          }
-        }
+          for (size_t idx = 0; idx < window_size; idx++)
+            spectrogram[n + i][idx] = f[i][idx];
       }
     }
 
@@ -248,6 +228,30 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
     M_prime = m;
   }
   return spectrogram;
+}
+
+rarray<std::complex<double>, 2> fft::stft_qpff_batch(
+    rarray<std::complex<double>, 3> B, rarray<std::complex<double>, 2> tw,
+    size_t window_size, size_t s)
+{
+  size_t count = (1 << s);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
+  for (size_t i = 0; i < window_size / 2; i++)
+  {
+    for (size_t k = 0; k < count; k++)
+    {
+      std::complex<double> xr, x0, x1;
+      xr = B[i][0][k] * tw[window_size - (1 << (s + 1)) + k][s];
+      x0 = B[i][1][k] + xr;
+      x1 = B[i][1][k] - xr;
+
+      f[i][k] = x0;
+      f[i][k + count] = x1;
+    }
+  }
+
+  return f;
 }
 
 rarray<std::complex<double>, 1> fft::fft(
