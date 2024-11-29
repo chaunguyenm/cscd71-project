@@ -147,7 +147,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
 #pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
-  std::cout << fft << "\n";
 
     // Initialize M
 #pragma omp parallel for default(none) shared(num_stages, window_size, M, fft)
@@ -163,7 +162,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       }
     }
   }
-  std::cout << "init M " << M << "\n";
 
   for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
   {
@@ -193,8 +191,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
             for (size_t idx = 0; idx < window_size / 2; idx++)
               B[i][0][idx] = M[start_idx][s][idx];
         }
-
-        std::cout << "B " << B << "\n";
       }
 
       // Parallel B
@@ -230,8 +226,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
             for (size_t idx = 0; idx < window_size / 2; idx++)
               M[start_idx][col_idx][idx] = f[idx];
           }
-          std::cout << "updated M " << M << "\n";
-          std::cout << "updated M' " << M_prime << "\n";
         }
         else
         {
@@ -245,7 +239,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
             spectrogram[n + i][k] = x0;
             spectrogram[n + i][k + window_size / 2] = x1;
           }
-          std::cout << "spectrogram " << spectrogram << "\n";
         }
       }
     }
