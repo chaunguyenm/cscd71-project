@@ -6,27 +6,21 @@ OMPFLAGS = -fopenmp
 GPROFFLAGS = -g -pg
 INCLUDE = -I./include
 
-all: stft stft-omp
+all: stft 
 
 stft: stft.o fft.o
-	$(MPICXX) $(INCLUDE) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-stft-omp: stft.o fft-omp.o
-	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
+	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) -o $@ $^ $(LDLIBS)
 
 stft.o: stft.cc
-	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) -o $@ $<
+	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFLAGS) -o $@ $<
 
 fft.o: fft.cc fft.h
-	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) -o $@ $<
-
-fft-omp.o: fft.cc fft.h
-	$(MPICXX) $(INCLUDE) $(OMPFLAGS) -c $(CXXFLAGS) -o $@ $<
+	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFFLAGS) -o $@ $<
 
 clean:
-	$(RM) stft.o fft.o fft-omp.o
+	$(RM) stft.o fft.o
 
 distclean: clean
-	$(RM) stft stft-omp
+	$(RM) stft
 
 .PHONY: all clean distclean 

@@ -2,9 +2,7 @@
 #define FFT_H
 
 #include <complex>
-#include <vector>
 #include <string>
-#include "rarray"
 
 namespace fft
 {
@@ -44,6 +42,8 @@ namespace fft_mpi
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
   rarray<std::complex<double>, 2> stft_ff(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
+  rarray<std::complex<double>, 2> stft_qpff(
+      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
 }
 
 namespace fft_hybrid
@@ -54,6 +54,8 @@ namespace fft_hybrid
   rarray<std::complex<double>, 2> stft_fft(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
   rarray<std::complex<double>, 2> stft_ff(
+      rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
+  rarray<std::complex<double>, 2> stft_qpff(
       rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step);
 }
 

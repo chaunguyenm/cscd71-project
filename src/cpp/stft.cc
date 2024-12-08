@@ -1,10 +1,62 @@
 #include "fft.h"
+#include "rarray"
 #include <iostream>
+#include <fstream>
 #include <unistd.h>
+
+rarray<std::complex<double>, 2> compute_stft(
+    rarray<std::complex<double>, 1> signal, unsigned long num_samples,
+    unsigned long window_size, const char *algorithm, const char *parallel)
+{
+  rarray<std::complex<double>, 2> stft;
+  if (algorithm != NULL && strncmp(algorithm, "dft", strlen("dft")) == 0)
+  {
+    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+      stft = fft_mpi::stft_dft(signal, window_size, 1);
+    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
+      stft = fft::stft_dft(signal, window_size, 1);
+    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
+      stft = fft_hybrid::stft_dft(signal, window_size, 1);
+    else
+    {
+      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
+      return stft;
+    }
+  }
+  else if (algorithm != NULL && strncmp(algorithm, "fft", strlen("fft")) == 0)
+  {
+    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+      stft = fft_mpi::stft_fft(signal, window_size, 1);
+    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
+      stft = fft::stft_fft(signal, window_size, 1);
+    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
+      stft = fft_hybrid::stft_fft(signal, window_size, 1);
+    else
+    {
+      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
+      return stft;
+    }
+  }
+  else if (algorithm != NULL && strncmp(algorithm, "ff", strlen("ff")) == 0)
+  {
+    stft = fft::stft_ff(signal, window_size, 1);
+  }
+  else if (algorithm != NULL && strncmp(algorithm, "qpff", strlen("qpff")) == 0)
+  {
+    stft = fft::stft_qpff(signal, window_size, 1);
+  }
+  else
+  {
+    std::cout << "Unrecognized algorithm. See -h for usage.\n";
+    return stft;
+  }
+  return stft;
+}
 
 int main(int argc, char *argv[])
 {
   int helpFlag = 0;
+  int silentFlag = 0;
   char *algorithm = NULL;
   char *parallel = NULL;
   char *outputFile = NULL;
@@ -12,11 +64,14 @@ int main(int argc, char *argv[])
 
   opterr = 0;
 
-  while ((c = getopt(argc, argv, "ha:o:p:")) != -1)
+  while ((c = getopt(argc, argv, "hsa:o:p:")) != -1)
     switch (c)
     {
     case 'h':
       helpFlag = 1;
+      break;
+    case 's':
+      silentFlag = 1;
       break;
     case 'a':
       algorithm = optarg;
@@ -41,12 +96,13 @@ int main(int argc, char *argv[])
 
   if (helpFlag)
   {
-    fprintf(stdout, "usage: %s [-h] [-a algorithm] [-p parallel] "
+    fprintf(stdout, "usage: %s [-h] [-s] [-a algorithm] [-p parallel] "
                     "[-o output] [num-samples] [window-size]\n",
             argv[0]);
     fprintf(stdout, "num-samples\tlong, size of input signal\n");
     fprintf(stdout, "window-size\tlong, less than num-samples, power of 2, size of stft window\n");
     fprintf(stdout, "-h\thelp\n");
+    fprintf(stdout, "-s\tsilent (do not print any output)\n");
     fprintf(stdout, "-a\tshort time fourier transform algorithm: "
                     "dft, fft (default), ff\n");
     fprintf(stdout, "-p\tparallel scheme: omp (default), "
@@ -115,65 +171,28 @@ int main(int argc, char *argv[])
     signal[i] = std::complex<double>(double(i), 0.0);
   // std::cout << signal << "\n";
 
+  rarray<std::complex<double>, 2> stft;
+  stft = compute_stft(signal, num_samples, window_size,
+                      (const char *)algorithm, (const char *)parallel);
+
   if (outputFile != NULL)
   {
-  }
-  else
-  {
-    rarray<std::complex<double>, 2> stft;
-    if (algorithm != NULL && strncmp((const char *)algorithm,
-                                     "dft", strlen("dft")) == 0)
+    std::ofstream outfile;
+    outfile.open(outputFile);
+    if (outfile.is_open())
     {
-      if (parallel != NULL && strncmp((const char *)parallel,
-                                      "mpi", strlen("mpi")) == 0)
-        stft = fft_mpi::stft_dft(signal, window_size, 1);
-      else if (parallel != NULL && strncmp((const char *)parallel,
-                                           "omp", strlen("omp")) == 0)
-        stft = fft::stft_dft(signal, window_size, 1);
-      else if (parallel != NULL && strncmp((const char *)parallel,
-                                           "hybrid", strlen("hybrid")) == 0)
-        stft = fft_hybrid::stft_dft(signal, window_size, 1);
-      else
-      {
-        std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-        return 1;
-      }
-    }
-    else if (algorithm != NULL && strncmp((const char *)algorithm,
-                                          "fft", strlen("fft")) == 0)
-    {
-      if (parallel != NULL && strncmp((const char *)parallel,
-                                      "mpi", strlen("mpi")) == 0)
-        stft = fft_mpi::stft_fft(signal, window_size, 1);
-      else if (parallel != NULL && strncmp((const char *)parallel,
-                                           "omp", strlen("omp")) == 0)
-        stft = fft::stft_fft(signal, window_size, 1);
-      else if (parallel != NULL && strncmp((const char *)parallel,
-                                           "hybrid", strlen("hybrid")) == 0)
-        stft = fft_hybrid::stft_fft(signal, window_size, 1);
-      else
-      {
-        std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-        return 1;
-      }
-    }
-    else if (algorithm != NULL && strncmp((const char *)algorithm,
-                                          "ff", strlen("ff")) == 0)
-    {
-      stft = fft::stft_ff(signal, window_size, 1);
-    }
-    else if (algorithm != NULL && strncmp((const char *)algorithm,
-                                          "qpff", strlen("qpff")) == 0)
-    {
-      stft = fft::stft_qpff(signal, window_size, 1);
+      outfile << stft << "\n";
+      outfile.close();
     }
     else
     {
-      std::cout << "Unrecognized algorithm. See -h for usage.\n";
+      fprintf(stderr, "Error opening output file.\n");
       return 1;
     }
-    std::cout << stft << "\n";
   }
+  else
+    if (silentFlag == 0)
+      std::cout << stft << "\n";
 
   return 0;
 }

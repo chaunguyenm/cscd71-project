@@ -87,7 +87,7 @@ rarray<std::complex<double>, 2> fft::stft_ff(
     size_t count = 1 << stage;
     for (size_t r = 0; (2 * r + 1) * count < window_size; r++)
     {
-      size_t buffer_idx = reverse_bits(r, window_size / 4);
+      size_t buffer_idx = reverse_bits(r, log2(window_size / 2));
       for (size_t c = 0; c < count; c++)
         buffer[buffer_idx + c][stage] = fft[(2 * r + 1) * count + c][stage];
     }
