@@ -10,11 +10,12 @@ rarray<std::complex<double>, 2> fft::stft_dft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> dft;
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
   for (size_t i = 0; i < spectrogram_size; i++)
   {
-    rarray<std::complex<double>, 1> dft = fft::dft(vec, i * window_step, window_size);
+    dft = fft::dft(vec, i * window_step, window_size);
 
 #pragma omp parallel for default(none) shared(window_size, dft, i, spectrogram)
     for (size_t j = 0; j < window_size; j++)
@@ -47,11 +48,12 @@ rarray<std::complex<double>, 2> fft::stft_fft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> fft;
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
   for (size_t i = 0; i < spectrogram_size; i++)
   {
-    rarray<std::complex<double>, 1> fft = fft::fft(vec, i * window_step, window_size);
+    fft = fft::fft(vec, i * window_step, window_size);
 
 #pragma omp parallel for default(none) shared(window_size, fft, i, spectrogram)
     for (size_t j = 0; j < window_size; j++)
@@ -76,6 +78,7 @@ rarray<std::complex<double>, 2> fft::stft_ff(
   for (size_t i = 0; i < window_size; i++)
     subvec[i] = vec[i];
   transform(subvec, fft, tw);
+
 #pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
@@ -138,6 +141,9 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       M(window_size / 2, num_stages - 1, window_size / 2),
       M_prime(window_size / 2, num_stages - 1, window_size / 2);
 
+  rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
 #pragma omp parallel for default(none) shared(window_size, subvec, vec)
@@ -169,7 +175,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
 #pragma omp parallel for default(none) shared(window_size, spectrogram, M, M_prime, vec, n, num_stages, M_prime)
     for (size_t s = 0; s < num_stages - 1; s++)
     {
-      rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
       for (size_t i = 0; i < window_size / 2; i++)
       {
         for (size_t idx = 0; idx < window_size / 2; idx++)
@@ -196,7 +201,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       }
 
       // Parallel B
-      rarray<std::complex<double>, 2> f(window_size / 2, window_size);
       f = fft::stft_qpff_batch(B, tw, window_size, s);
 
 #pragma omp parallel for default(none) shared(spectrogram, M_prime, M, f, num_stages, window_size)
@@ -226,9 +230,7 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       }
     }
 
-    M = M_prime;
-    rarray<std::complex<double>, 3> m(window_size / 2, num_stages - 1, window_size / 2);
-    M_prime = m;
+    M = M_prime.copy();
   }
   return spectrogram;
 }
@@ -395,6 +397,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> dft;
 
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -406,7 +409,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
 
   for (size_t i = start_idx; i < end_idx; i++)
   {
-    rarray<std::complex<double>, 1> dft = fft::dft(vec, i * window_step, window_size);
+    dft = fft::dft(vec, i * window_step, window_size);
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = dft[j];
   }
@@ -432,6 +435,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> fft;
 
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -443,7 +447,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
 
   for (size_t i = start_idx; i < end_idx; i++)
   {
-    rarray<std::complex<double>, 1> fft = fft::fft(vec, i * window_step, window_size);
+    fft = fft::fft(vec, i * window_step, window_size);
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = fft[j];
   }
@@ -478,6 +482,9 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
       M(window_size / 2, num_stages - 1, window_size / 2),
       M_prime(window_size / 2, num_stages - 1, window_size / 2);
 
+  rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
   for (size_t i = 0; i < window_size; i++)
@@ -505,7 +512,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
   {
     for (size_t s = 0; s < num_stages - 1; s++)
     {
-      rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
       for (size_t i = 0; i < window_size / 2; i++)
       {
         for (size_t idx = 0; idx < window_size / 2; idx++)
@@ -532,7 +538,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
       }
 
       // Parallel B
-      rarray<std::complex<double>, 2> f(window_size / 2, window_size);
       fft_mpi::stft_qpff_batch(B, tw, window_size, s, f);
 
       // Collect results
@@ -564,9 +569,7 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
       }
     }
 
-    M = M_prime;
-    rarray<std::complex<double>, 3> m(window_size / 2, num_stages - 1, window_size / 2);
-    M_prime = m;
+    M = M_prime.copy();
   }
 
   return spectrogram;
@@ -624,7 +627,7 @@ void fft_mpi::stft_qpff_batch(
     {
       int recv_chunksize = p < remaining ? chunksize + 1 : chunksize;
       int recv_offset = p * chunksize + (remaining > p ? p : remaining);
-      std::complex<double> recv_f[recv_chunksize * window_size];
+      std::complex<double> *recv_f = new std::complex<double>[recv_chunksize * window_size];
       MPI_Recv(recv_f, recv_chunksize * window_size, MPI_DOUBLE_COMPLEX, p, 0,
                MPI_COMM_WORLD, &status);
 
@@ -652,6 +655,7 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> dft;
 
   int rank, size, provided;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -664,7 +668,7 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
 #pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
   for (size_t i = start_idx; i < end_idx; i++)
   {
-    rarray<std::complex<double>, 1> dft = fft::dft(vec, i * window_step, window_size);
+    dft = fft::dft(vec, i * window_step, window_size);
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = dft[j];
   }
@@ -690,6 +694,7 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> fft;
 
   int rank, size, provided;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -702,7 +707,7 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
 #pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
   for (size_t i = start_idx; i < end_idx; i++)
   {
-    rarray<std::complex<double>, 1> fft = fft::fft(vec, i * window_step, window_size);
+    fft = fft::fft(vec, i * window_step, window_size);
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = fft[j];
   }
