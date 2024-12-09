@@ -9,13 +9,13 @@ INCLUDE = -I./include
 all: stft 
 
 stft: stft.o fft.o
-	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) -o $@ $^ $(LDLIBS)
+	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
 
 stft.o: stft.cc
-	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFLAGS) -o $@ $<
+	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFLAGS) $(OMPFLAGS) -o $@ $<
 
 fft.o: fft.cc fft.h
-	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFFLAGS) -o $@ $<
+	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $<
 
 clean:
 	$(RM) stft.o fft.o

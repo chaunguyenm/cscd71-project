@@ -10,12 +10,11 @@ rarray<std::complex<double>, 2> fft::stft_dft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
-  rarray<std::complex<double>, 1> dft;
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
   for (size_t i = 0; i < spectrogram_size; i++)
   {
-    dft = fft::dft(vec, i * window_step, window_size);
+    rarray<std::complex<double>, 1> dft = fft::dft(vec, i * window_step, window_size);
 
 #pragma omp parallel for default(none) shared(window_size, dft, i, spectrogram)
     for (size_t j = 0; j < window_size; j++)
@@ -48,12 +47,11 @@ rarray<std::complex<double>, 2> fft::stft_fft(
 {
   size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
-  rarray<std::complex<double>, 1> fft;
 
 #pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
   for (size_t i = 0; i < spectrogram_size; i++)
   {
-    fft = fft::fft(vec, i * window_step, window_size);
+    rarray<std::complex<double>, 1> fft = fft::fft(vec, i * window_step, window_size);
 
 #pragma omp parallel for default(none) shared(window_size, fft, i, spectrogram)
     for (size_t j = 0; j < window_size; j++)
@@ -74,17 +72,14 @@ rarray<std::complex<double>, 2> fft::stft_ff(
 
   // Perform FFT on 1st N signals
   rarray<std::complex<double>, 1> subvec(window_size);
-#pragma omp parallel for default(none) shared(window_size, subvec, vec)
   for (size_t i = 0; i < window_size; i++)
     subvec[i] = vec[i];
   transform(subvec, fft, tw);
 
-#pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
 
     // Prepare buffer
-#pragma omp paralel for default(none) shared(num_stages, window_size, buffer, fft)
   for (size_t stage = 0; stage < num_stages; stage++)
   {
     size_t count = 1 << stage;
@@ -96,6 +91,7 @@ rarray<std::complex<double>, 2> fft::stft_ff(
     }
   }
 
+  // Compute the remaining FFTs
   for (size_t i = 1; i + window_size - 1 < vec.size(); i++)
   {
     for (size_t s = 1; s < num_stages; s++)
@@ -117,9 +113,11 @@ rarray<std::complex<double>, 2> fft::stft_ff(
         fft[window_size - (1 << s) + k + count][s] =
             buffer[m + k][s - 1] - tw[window_size - (1 << s) + k + count][s - 1] * xr;
       }
+      // Update buffer
       for (size_t k = 0; k < count; k++)
         buffer[m + k][s - 1] = fft[window_size - (1 << (s - 1)) + k][s - 1];
     }
+    // Write to output variable after completing all stages
     for (size_t j = 0; j < window_size; j++)
       spectrogram[i][j] = fft[j][num_stages - 1];
   }
@@ -172,7 +170,6 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
 
   for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
   {
-#pragma omp parallel for default(none) shared(window_size, spectrogram, M, M_prime, vec, n, num_stages, M_prime)
     for (size_t s = 0; s < num_stages - 1; s++)
     {
       for (size_t i = 0; i < window_size / 2; i++)
@@ -200,10 +197,10 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
         }
       }
 
-      // Parallel B
+      // Parallel B to compute N/2 FFTs
       f = fft::stft_qpff_batch(B, tw, window_size, s);
 
-#pragma omp parallel for default(none) shared(spectrogram, M_prime, M, f, num_stages, window_size)
+      // Update buffers M and M'
       for (size_t i = 0; i < window_size / 2; i++)
       {
         size_t col_idx = s + 1;
@@ -230,6 +227,7 @@ rarray<std::complex<double>, 2> fft::stft_qpff(
       }
     }
 
+    // Swap buffers for next iteration
     M = M_prime.copy();
   }
   return spectrogram;
@@ -242,8 +240,10 @@ rarray<std::complex<double>, 2> fft::stft_qpff_batch(
   size_t count = (1 << s);
   rarray<std::complex<double>, 2> f(window_size / 2, window_size);
 
+#pragma omp parallel for default(none) shared(B, tw, window_size, s, count, f)
   for (size_t i = 0; i < window_size / 2; i++)
   {
+    #pragma omp parallel for default(none) shared(B, tw, window_size, s, count, f, i)
     for (size_t k = 0; k < count; k++)
     {
       std::complex<double> xr, x0, x1;
@@ -580,7 +580,6 @@ void fft_mpi::stft_qpff_batch(
     size_t window_size, size_t s, rarray<std::complex<double>, 2> f)
 {
   int rank, size, chunksize, remaining;
-  MPI_Status status;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -596,6 +595,7 @@ void fft_mpi::stft_qpff_batch(
   std::complex<double> local_f[local_chunksize * window_size];
 
   // Compute local f for this process
+#pragma omp parallel for default(none) shared(local_chunksize, offset, count, B, tw, window_size, s, local_f)
   for (size_t i = 0; i < local_chunksize; i++)
   {
     for (size_t k = 0; k < count; k++)
@@ -623,13 +623,14 @@ void fft_mpi::stft_qpff_batch(
     }
 
     // Receive from remaining processes
+#pragma omp parallel for default(none) shared(size, chunksize, remaining, window_size, f, count, ompi_mpi_comm_world, ompi_mpi_dblcplex)
     for (int p = 1; p < size; p++)
     {
       int recv_chunksize = p < remaining ? chunksize + 1 : chunksize;
       int recv_offset = p * chunksize + (remaining > p ? p : remaining);
       std::complex<double> *recv_f = new std::complex<double>[recv_chunksize * window_size];
       MPI_Recv(recv_f, recv_chunksize * window_size, MPI_DOUBLE_COMPLEX, p, 0,
-               MPI_COMM_WORLD, &status);
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
       // Copy from recv array to global f
       for (size_t i = 0; i < recv_chunksize; i++)
@@ -647,83 +648,4 @@ void fft_mpi::stft_qpff_batch(
     MPI_Send(local_f, local_chunksize * window_size,
              MPI_DOUBLE_COMPLEX, 0, 0, MPI_COMM_WORLD);
   }
-}
-
-rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
-    rarray<std::complex<double>, 1> &vec,
-    size_t window_size, size_t window_step)
-{
-  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
-  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
-  rarray<std::complex<double>, 1> dft;
-
-  int rank, size, provided;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  size_t chunk_size = spectrogram_size / size;
-  size_t start_idx = rank * chunk_size;
-  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
-
-#pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
-  for (size_t i = start_idx; i < end_idx; i++)
-  {
-    dft = fft::dft(vec, i * window_step, window_size);
-    for (size_t j = 0; j < window_size; j++)
-      spectrogram[i][j] = dft[j];
-  }
-
-  if (rank == 0)
-    for (int p = 1; p < size; p++)
-    {
-      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
-      MPI_Recv(&spectrogram[p * chunk_size][0],
-               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-  else
-    MPI_Send(&spectrogram[start_idx][0],
-             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
-             MPI_COMM_WORLD);
-
-  return spectrogram;
-}
-
-rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
-    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
-{
-  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
-  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
-  rarray<std::complex<double>, 1> fft;
-
-  int rank, size, provided;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  size_t chunk_size = spectrogram_size / size;
-  size_t start_idx = rank * chunk_size;
-  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
-
-#pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, spectrogram)
-  for (size_t i = start_idx; i < end_idx; i++)
-  {
-    fft = fft::fft(vec, i * window_step, window_size);
-    for (size_t j = 0; j < window_size; j++)
-      spectrogram[i][j] = fft[j];
-  }
-
-  if (rank == 0)
-    for (int p = 1; p < size; p++)
-    {
-      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
-      MPI_Recv(&spectrogram[p * chunk_size][0],
-               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-  else
-    MPI_Send(&spectrogram[start_idx][0],
-             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
-             MPI_COMM_WORLD);
-
-  return spectrogram;
 }

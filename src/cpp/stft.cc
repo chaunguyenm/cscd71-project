@@ -17,7 +17,7 @@ rarray<std::complex<double>, 2> compute_stft(
     else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
       stft = fft::stft_dft(signal, window_size, 1);
     else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = fft_hybrid::stft_dft(signal, window_size, 1);
+      stft = fft_mpi::stft_dft(signal, window_size, 1);
     else
     {
       std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
@@ -31,7 +31,7 @@ rarray<std::complex<double>, 2> compute_stft(
     else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
       stft = fft::stft_fft(signal, window_size, 1);
     else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = fft_hybrid::stft_fft(signal, window_size, 1);
+      stft = fft_mpi::stft_fft(signal, window_size, 1);
     else
     {
       std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
@@ -46,8 +46,15 @@ rarray<std::complex<double>, 2> compute_stft(
   {
     if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
       stft = fft_mpi::stft_qpff(signal, window_size, 1);
-    else
+    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
       stft = fft::stft_qpff(signal, window_size, 1);
+    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
+      stft = fft_mpi::stft_qpff(signal, window_size, 1);
+    else
+    {
+      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
+      return stft;
+    }
   }
   else
   {
@@ -110,8 +117,7 @@ int main(int argc, char *argv[])
     fprintf(stdout, "-a\tshort time fourier transform algorithm: "
                     "dft, fft (default), ff\n");
     fprintf(stdout, "-p\tparallel scheme: omp (default), "
-                    "mpi (must be run with mpirun), "
-                    "hybrid (omp + mpi, must be run with mpirun)\n");
+                    "mpi (must be run with mpirun)\n");
     fprintf(stdout, "-o\toutput file: "
                     "[/path/to/file]\n");
     return 1;

@@ -2,7 +2,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=04:00:00
+#SBATCH --time=01:00:00
 #SBATCH --job-name stft_omp_job
 #SBATCH --output=stft_omp_output_%j.txt
 #SBATCH --mail-type=FAIL
@@ -13,15 +13,13 @@ cd $SLURM_SUBMIT_DIR
 source teachsetup
 
 # run scaling analysis
-for i in {1..16}; do
-    export OMP_NUM_THREADS=$i
-    { time -p "$@"; } 2> "output_$i.txt"
-done
-
-# hyperthreading
-for i in 32 48 64; do
-    export OMP_NUM_THREADS=$i
-    { time -p "$@"; } 2> "output_$i.txt"
+for i in 1 2 4 8; do
+    num_threads=$((i*i))
+    export OMP_NUM_THREADS=$num_threads
+    num_samples=16384
+    window_size=$((128 * i))
+    args="$num_samples $window_size"
+    { time -p "$@" $args; } 2> "output_$num_threads.txt"
 done
 
 # prepare output
@@ -43,4 +41,3 @@ done
 # plot
 module load gnuplot
 gnuplot -e "dir='.'" plot.gnu
-
