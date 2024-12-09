@@ -43,7 +43,10 @@ rarray<std::complex<double>, 2> compute_stft(
   }
   else if (algorithm != NULL && strncmp(algorithm, "qpff", strlen("qpff")) == 0)
   {
-    stft = fft::stft_qpff(signal, window_size, 1);
+    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+      stft = fft_mpi::stft_qpff(signal, window_size, 1);
+    else
+      stft = fft::stft_qpff(signal, window_size, 1);
   }
   else
   {
@@ -190,9 +193,8 @@ int main(int argc, char *argv[])
       return 1;
     }
   }
-  else
-    if (silentFlag == 0)
-      std::cout << stft << "\n";
+  else if (silentFlag == 0)
+    std::cout << stft << "\n";
 
   return 0;
 }
