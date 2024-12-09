@@ -397,7 +397,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size;
-  MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -425,8 +424,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_dft(
              (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
              MPI_COMM_WORLD);
 
-  MPI_Finalize();
-
   return spectrogram;
 }
 
@@ -437,7 +434,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size;
-  MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -464,8 +460,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_fft(
     MPI_Send(&spectrogram[start_idx][0],
              (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
              MPI_COMM_WORLD);
-
-  MPI_Finalize();
 
   return spectrogram;
 }
@@ -507,7 +501,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
     }
   }
 
-  MPI_Init(NULL, NULL);
   for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
   {
     for (size_t s = 0; s < num_stages - 1; s++)
@@ -576,7 +569,6 @@ rarray<std::complex<double>, 2> fft_mpi::stft_qpff(
     M_prime = m;
   }
 
-  MPI_Finalize();
   return spectrogram;
 }
 
@@ -662,7 +654,6 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size, provided;
-  MPI_Init_thread(NULL, NULL, MPI_THREAD_FUNNELED, &provided);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -691,8 +682,6 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_dft(
              (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
              MPI_COMM_WORLD);
 
-  MPI_Finalize();
-
   return spectrogram;
 }
 
@@ -703,7 +692,6 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
   rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
 
   int rank, size, provided;
-  MPI_Init_thread(NULL, NULL, MPI_THREAD_FUNNELED, &provided);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -731,8 +719,6 @@ rarray<std::complex<double>, 2> fft_hybrid::stft_fft(
     MPI_Send(&spectrogram[start_idx][0],
              (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
              MPI_COMM_WORLD);
-
-  MPI_Finalize();
 
   return spectrogram;
 }

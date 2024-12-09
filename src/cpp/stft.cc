@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <unistd.h>
+#include <mpi.h>
 
 rarray<std::complex<double>, 2> compute_stft(
     rarray<std::complex<double>, 1> signal, unsigned long num_samples,
@@ -174,27 +175,55 @@ int main(int argc, char *argv[])
     signal[i] = std::complex<double>(double(i), 0.0);
   // std::cout << signal << "\n";
 
+  int rank, size, provided;
+  if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+  {
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+  }
+  else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
+  {
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+  }
+  else
+  {
+    rank = 0;
+    size = 0;
+    provided = 0;
+  }
+
   rarray<std::complex<double>, 2> stft;
   stft = compute_stft(signal, num_samples, window_size,
                       (const char *)algorithm, (const char *)parallel);
 
-  if (outputFile != NULL)
+  if (rank == 0)
   {
-    std::ofstream outfile;
-    outfile.open(outputFile);
-    if (outfile.is_open())
+    if (outputFile != NULL)
     {
-      outfile << stft << "\n";
-      outfile.close();
+      std::ofstream outfile;
+      outfile.open(outputFile);
+      if (outfile.is_open())
+      {
+        outfile << stft << "\n";
+        outfile.close();
+      }
+      else
+      {
+        fprintf(stderr, "Error opening output file.\n");
+        return 1;
+      }
     }
-    else
-    {
-      fprintf(stderr, "Error opening output file.\n");
-      return 1;
-    }
+    else if (silentFlag == 0)
+      std::cout << stft << "\n";
   }
-  else if (silentFlag == 0)
-    std::cout << stft << "\n";
+
+  if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+    MPI_Finalize();
+  else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
+    MPI_Finalize();
 
   return 0;
 }
