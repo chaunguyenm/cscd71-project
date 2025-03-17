@@ -1,8 +1,0 @@
-numpy
-scipy
-matplotlib
-ipython
-librosa
-soundfile
-libfmp
-ipykernel
