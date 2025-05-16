@@ -6,8 +6,8 @@
 #include <mpi.h>
 
 rarray<std::complex<double>, 2> compute_stft(
-    rarray<std::complex<double>, 1> signal, unsigned long num_samples,
-    unsigned long window_size, const char *algorithm, const char *parallel)
+    rarray<std::complex<double>, 1> signal, unsigned long window_size, 
+    const char *algorithm, const char *parallel)
 {
   rarray<std::complex<double>, 2> stft;
   if (algorithm != NULL && strncmp(algorithm, "dft", strlen("dft")) == 0)
@@ -204,8 +204,7 @@ int main(int argc, char *argv[])
   }
 
   rarray<std::complex<double>, 2> stft;
-  stft = compute_stft(signal, num_samples, window_size,
-                      (const char *)algorithm, (const char *)parallel);
+  stft = compute_stft(signal, window_size, (const char *)algorithm, (const char *)parallel);
 
   if (rank == 0)
   {

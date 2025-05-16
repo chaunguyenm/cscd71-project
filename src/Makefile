@@ -22,10 +22,9 @@ MPICXX = mpicxx
 # Flags to compiler, defined as separate variables for ease of use.
 CXXFLAGS += -O2 -march=native -std=c++17
 CXXFLAGS += -g -Wall -Wextra -Wno-unknown-pragmas -Wno-sign-compare
-LDFLAGS = -g
 OMPFLAGS = -fopenmp
 GPROFFLAGS = -g -pg
-FFTWFLAGS = -lfftw3 -lm
+FFTWFLAGS = -I/usr/local/include -L/usr/local/lib -lfftw3 -lm
 
 # Flags passed to the preprocessor.
 # Set Google Test's header directory as a system directory, such that
@@ -41,7 +40,7 @@ all: stft
 clean:
 	$(RM) *.o gtest.a gtest_main.a
 
-distclean: clean
+distclean:
 	$(RM) fft_unittest stft
 
 # Builds gtest.a and gtest_main.a.
@@ -69,7 +68,7 @@ gtest_main.a : gtest-all.o gtest_main.o
 
 # Builds the project.
 stft: stft.o fft.o
-	$(MPICXX) $(INCLUDE) $(LDFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
+	$(MPICXX) $(INCLUDE) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
 
 stft.o: stft.cc
 	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFLAGS) $(OMPFLAGS) -o $@ $<
@@ -84,7 +83,7 @@ fft_unittest.o : $(USER_DIR)/fft_unittest.cc $(GTEST_HEADERS)
 	$(CXX) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(FFTWFLAGS) -c $(USER_DIR)/fft_unittest.cc
 
 fft_unittest : fft_unittest.o fft.o gtest_main.a
-	$(MPICXX) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(FFTWFLAGS) $(OMPFLAGS) $^ -o $@	
+	$(MPICXX) $^ $(FFTWFLAGS) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(OMPFLAGS) -o $@	
 
 test: fft_unittest
 	./fft_unittest
