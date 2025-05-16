@@ -16,6 +16,9 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Initialize and update submodules
+      run: git submodule update --init --recursive  
+
     - name: Build Docker image
       run: cd src && docker build -t stft . && cd ..
 
