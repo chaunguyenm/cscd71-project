@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: checkout repository
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: build docker image
+    - name: Build Docker image
       run: cd src && docker build -t stft . && cd ..
 
-    - name: run tests 
-      run: cd src && docker run --rm stft bash -c "cd /project && make test" && cd ..
+    - name: Run tests 
+      run: docker run --rm -v $(pwd):/project stft bash -c "cd /project/src && make test"
 
