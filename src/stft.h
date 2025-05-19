@@ -48,7 +48,7 @@ namespace stft_mpi
 }
 
 rarray<std::complex<double>, 2> compute_stft(
-  rarray<std::complex<double>, 1> signal, unsigned long window_size, 
-  const char *algorithm, const char *parallel);
+    rarray<std::complex<double>, 1> signal, unsigned long window_size,
+    const char *algorithm, const char *parallel);
 
 #endif

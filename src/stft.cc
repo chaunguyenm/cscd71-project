@@ -153,7 +153,7 @@ rarray<std::complex<double>, 2> stft::stft_qpff(
   for (size_t i = 0; i < window_size; i++)
     spectrogram[0][i] = fft[i][num_stages - 1];
 
-    // Initialize M
+  // Initialize M
 #pragma omp parallel for default(none) shared(num_stages, window_size, M, fft)
   for (size_t s = 0; s < num_stages - 1; s++)
   {
@@ -288,7 +288,7 @@ bool stft::transform(rarray<std::complex<double>, 1> &vec)
   for (size_t i = 0; i < n / 2; i++)
     exptable[i] = std::polar(1.0, -2. * PI * i / n);
 
-    // Bit-reversed addressing permutation
+  // Bit-reversed addressing permutation
 #pragma omp parallel for default(none) shared(levels, vec, n)
   for (size_t i = 0; i < n; i++)
   {
@@ -324,8 +324,8 @@ bool stft::transform(rarray<std::complex<double>, 1> &vec)
 }
 
 bool stft::transform(rarray<std::complex<double>, 1> &vec,
-                    rarray<std::complex<double>, 2> &fft,
-                    rarray<std::complex<double>, 2> &tw)
+                     rarray<std::complex<double>, 2> &fft,
+                     rarray<std::complex<double>, 2> &tw)
 {
   // Length variables
   size_t n = vec.size();
@@ -341,7 +341,7 @@ bool stft::transform(rarray<std::complex<double>, 1> &vec,
   for (size_t i = 0; i < n / 2; i++)
     exptable[i] = std::polar(1.0, -2. * PI * i / n);
 
-    // Bit-reversed addressing permutation
+  // Bit-reversed addressing permutation
 #pragma omp parallel for default(none) shared(vec, levels, n)
   for (size_t i = 0; i < n; i++)
   {

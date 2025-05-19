@@ -4,65 +4,65 @@
 #include <fstream>
 #include <unistd.h>
 #include <mpi.h>
+#include <map>
+#include <string>
+#include <functional>
+#include <iostream>
+#include <cstring>
 
 rarray<std::complex<double>, 2> compute_stft(
-    rarray<std::complex<double>, 1> signal, unsigned long window_size, 
-    const char *algorithm, const char *parallel)
+    rarray<std::complex<double>, 1> signal,
+    unsigned long window_size,
+    const char *algorithm_cstr,
+    const char *parallel_cstr)
 {
-  rarray<std::complex<double>, 2> stft;
-  if (algorithm != NULL && strncmp(algorithm, "dft", strlen("dft")) == 0)
+  using namespace std;
+  using STFTFunc = function<rarray<complex<double>, 2>(rarray<complex<double>, 1> &, size_t, size_t)>;
+
+  string algorithm = algorithm_cstr ? string(algorithm_cstr) : "";
+  string parallel = parallel_cstr ? string(parallel_cstr) : "";
+
+  auto normalize = [](string s)
   {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-      stft = stft_mpi::stft_dft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = stft::stft_dft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = stft_mpi::stft_dft(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
-  }
-  else if (algorithm != NULL && strncmp(algorithm, "fft", strlen("fft")) == 0)
+    for (auto &c : s)
+      c = tolower(c);
+    return s;
+  };
+  algorithm = normalize(algorithm);
+  parallel = normalize(parallel);
+
+  // key = (algorithm, parallel)
+  const map<pair<string, string>, STFTFunc> stft_dispatch = {
+      {{"dft", "mpi"}, stft_mpi::stft_dft},
+      {{"dft", "omp"}, stft::stft_dft},
+      {{"dft", "hybrid"}, stft_mpi::stft_dft},
+
+      {{"fft", "mpi"}, stft_mpi::stft_fft},
+      {{"fft", "omp"}, stft::stft_fft},
+      {{"fft", "hybrid"}, stft_mpi::stft_fft},
+
+      {{"ff", ""}, stft::stft_ff}, // no parallel options
+
+      {{"qpff", "mpi"}, stft_mpi::stft_qpff},
+      {{"qpff", "omp"}, stft::stft_qpff},
+      {{"qpff", "hybrid"}, stft_mpi::stft_qpff},
+  };
+
+  rarray<complex<double>, 2> stft;
+
+  auto it = stft_dispatch.find({algorithm, parallel});
+  if (it == stft_dispatch.end() && parallel.empty())
   {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-    {
-      stft = stft_mpi::stft_fft(signal, window_size, 1);
-    }
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = stft::stft_fft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = stft_mpi::stft_fft(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
+    it = stft_dispatch.find({algorithm, ""});
   }
-  else if (algorithm != NULL && strncmp(algorithm, "ff", strlen("ff")) == 0)
+
+  if (it != stft_dispatch.end())
   {
-    stft = stft::stft_ff(signal, window_size, 1);
+    rarray<complex<double>, 1> sig_copy = signal;
+    return it->second(sig_copy, window_size, 1);
   }
-  else if (algorithm != NULL && strncmp(algorithm, "qpff", strlen("qpff")) == 0)
-  {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-      stft = stft_mpi::stft_qpff(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = stft::stft_qpff(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = stft_mpi::stft_qpff(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
-  }
-  else
-  {
-    std::cout << "Unrecognized algorithm. See -h for usage.\n";
-    return stft;
-  }
+
+  std::cerr << "Unrecognized algorithm or parallel scheme. See -h for usage.\n";
   return stft;
 }
 
