@@ -35,13 +35,13 @@ CPPFLAGS += -isystem $(GTEST_DIR)/include
 INCLUDE = -I./include
 
 # House-keeping build targets.
-all: stft 
+all: main
 
 clean:
 	$(RM) *.o gtest.a gtest_main.a
 
 distclean:
-	$(RM) fft_unittest stft
+	$(RM) stft_unittest main
 
 # Builds gtest.a and gtest_main.a.
 # Usually you shouldn't tweak such internal variables, indicated by a
@@ -67,25 +67,25 @@ gtest_main.a : gtest-all.o gtest_main.o
 	$(AR) $(ARFLAGS) $@ $^	
 
 # Builds the project.
-stft: stft.o fft.o
+main: main.o stft.o
 	$(MPICXX) $(INCLUDE) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $^ $(LDLIBS)
 
-stft.o: stft.cc
+main.o: main.cc
 	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFLAGS) $(OMPFLAGS) -o $@ $<
 
-fft.o: fft.cc fft.h
+stft.o: stft.cc stft.h
 	$(MPICXX) $(INCLUDE) -c $(CXXFLAGS) $(GPROFFLAGS) $(OMPFLAGS) -o $@ $<		
 
 # Builds unit test.  A test should link with either gtest.a or
 # gtest_main.a, depending on whether it defines its own main()
 # function.
-fft_unittest.o : $(USER_DIR)/fft_unittest.cc $(GTEST_HEADERS)
-	$(CXX) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(FFTWFLAGS) -c $(USER_DIR)/fft_unittest.cc
+stft_unittest.o : $(USER_DIR)/stft_unittest.cc $(GTEST_HEADERS)
+	$(CXX) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(FFTWFLAGS) -c $(USER_DIR)/stft_unittest.cc
 
-fft_unittest : fft_unittest.o fft.o gtest_main.a
+stft_unittest : stft_unittest.o stft.o gtest_main.a
 	$(MPICXX) $^ $(FFTWFLAGS) $(INCLUDE) $(CPPFLAGS) $(CXXFLAGS) $(OMPFLAGS) -o $@	
 
-test: fft_unittest
-	./fft_unittest
+test: stft_unittest
+	./stft_unittest
 
 .PHONY: all clean distclean test

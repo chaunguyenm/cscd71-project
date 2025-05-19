@@ -1,10 +1,10 @@
-#ifndef FFT_H
-#define FFT_H
+#ifndef STFT_H
+#define STFT_H
 
 #include <complex>
 #include "rarray"
 
-namespace fft
+namespace stft
 {
   rarray<std::complex<double>, 2> stft_dft(
       rarray<std::complex<double>, 1> &vec,
@@ -33,7 +33,7 @@ namespace fft
       size_t window_size, size_t s);
 }
 
-namespace fft_mpi
+namespace stft_mpi
 {
   rarray<std::complex<double>, 2> stft_dft(
       rarray<std::complex<double>, 1> &vec,
@@ -46,5 +46,9 @@ namespace fft_mpi
       rarray<std::complex<double>, 3> B, rarray<std::complex<double>, 2> tw,
       size_t window_size, size_t s, rarray<std::complex<double>, 2> f);
 }
+
+rarray<std::complex<double>, 2> compute_stft(
+  rarray<std::complex<double>, 1> signal, unsigned long window_size, 
+  const char *algorithm, const char *parallel);
 
 #endif

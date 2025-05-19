@@ -1,235 +1,649 @@
-#include "fft.h"
-#include "rarray"
-#include <iostream>
+#include "stft.h"
 #include <fstream>
-#include <unistd.h>
+#include <iostream>
 #include <mpi.h>
 
-rarray<std::complex<double>, 2> compute_stft(
-    rarray<std::complex<double>, 1> signal, unsigned long window_size, 
-    const char *algorithm, const char *parallel)
+#define PI 3.14159265358979323846
+
+rarray<std::complex<double>, 2> stft::stft_dft(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
 {
-  rarray<std::complex<double>, 2> stft;
-  if (algorithm != NULL && strncmp(algorithm, "dft", strlen("dft")) == 0)
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+
+#pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
+  for (size_t i = 0; i < spectrogram_size; i++)
   {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-      stft = fft_mpi::stft_dft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = fft::stft_dft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = fft_mpi::stft_dft(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
+    rarray<std::complex<double>, 1> dft = stft::dft(vec, i * window_step, window_size);
+
+#pragma omp parallel for default(none) shared(window_size, dft, i, spectrogram)
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = dft[j];
   }
-  else if (algorithm != NULL && strncmp(algorithm, "fft", strlen("fft")) == 0)
-  {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-    {
-      stft = fft_mpi::stft_fft(signal, window_size, 1);
-    }
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = fft::stft_fft(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = fft_mpi::stft_fft(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
-  }
-  else if (algorithm != NULL && strncmp(algorithm, "ff", strlen("ff")) == 0)
-  {
-    stft = fft::stft_ff(signal, window_size, 1);
-  }
-  else if (algorithm != NULL && strncmp(algorithm, "qpff", strlen("qpff")) == 0)
-  {
-    if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-      stft = fft_mpi::stft_qpff(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "omp", strlen("omp")) == 0)
-      stft = fft::stft_qpff(signal, window_size, 1);
-    else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-      stft = fft_mpi::stft_qpff(signal, window_size, 1);
-    else
-    {
-      std::cout << "Unrecognized parallel scheme. See -h for usage.\n";
-      return stft;
-    }
-  }
-  else
-  {
-    std::cout << "Unrecognized algorithm. See -h for usage.\n";
-    return stft;
-  }
-  return stft;
+  return spectrogram;
 }
 
-int main(int argc, char *argv[])
+rarray<std::complex<double>, 1> stft::dft(
+    const rarray<std::complex<double>, 1> &signal,
+    size_t vec_begin, size_t vec_size)
 {
-  int helpFlag = 0;
-  int silentFlag = 0;
-  char *algorithm = NULL;
-  char *parallel = NULL;
-  char *outputFile = NULL;
-  int c;
-
-  opterr = 0;
-
-  while ((c = getopt(argc, argv, "hsa:o:p:")) != -1)
-    switch (c)
+  rarray<std::complex<double>, 1> output(vec_size);
+#pragma omp parallel for default(none) shared(signal, vec_begin, vec_size, output)
+  for (size_t k = 0; k < vec_size; k++)
+  {
+    std::complex<double> sum = 0.;
+    for (size_t t = 0; t < vec_size; t++)
     {
-    case 'h':
-      helpFlag = 1;
-      break;
-    case 's':
-      silentFlag = 1;
-      break;
-    case 'a':
-      algorithm = optarg;
-      break;
-    case 'o':
-      outputFile = optarg;
-      break;
-    case 'p':
-      parallel = optarg;
-      break;
-    case '?':
-      if (optopt == 'a' || optopt == 'o')
-        fprintf(stderr, "Option -%c requires an argument.\n", optopt);
-      else if (isprint(optopt))
-        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-      else
-        fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
-      return 1;
-    default:
-      abort();
+      double angle = 2 * PI * t * k / vec_size;
+      sum += signal[t + vec_begin] * std::exp(std::complex<double>(0, -angle));
+    }
+    output[k] = sum;
+  }
+  return output;
+}
+
+rarray<std::complex<double>, 2> stft::stft_fft(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+
+#pragma omp parallel for default(none) shared(vec, window_size, window_step, spectrogram, spectrogram_size)
+  for (size_t i = 0; i < spectrogram_size; i++)
+  {
+    rarray<std::complex<double>, 1> fft = stft::fft(vec, i * window_step, window_size);
+
+#pragma omp parallel for default(none) shared(window_size, fft, i, spectrogram)
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = fft[j];
+  }
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> stft::stft_ff(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t num_stages = log2(window_size) + 1;
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
+      spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 2> tw(window_size, num_stages - 1);
+  rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
+
+  // Perform FFT on 1st N signals
+  rarray<std::complex<double>, 1> subvec(window_size);
+  for (size_t i = 0; i < window_size; i++)
+    subvec[i] = vec[i];
+  transform(subvec, fft, tw);
+
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+
+  // Prepare buffer
+  for (size_t stage = 0; stage < num_stages; stage++)
+  {
+    size_t count = 1 << stage;
+    for (size_t r = 0; (2 * r + 1) * count < window_size; r++)
+    {
+      size_t buffer_idx = reverse_bits(r, log2(window_size / 2));
+      for (size_t c = 0; c < count; c++)
+        buffer[buffer_idx + c][stage] = fft[(2 * r + 1) * count + c][stage];
+    }
+  }
+
+  // Compute the remaining FFTs
+  for (size_t i = 1; i + window_size - 1 < vec.size(); i++)
+  {
+    for (size_t s = 1; s < num_stages; s++)
+    {
+      size_t count = 1 << (s - 1);
+      size_t m = ((i - 1) % (window_size / (1 << s))) * count;
+      for (size_t k = 0; k < count; k++)
+      {
+        std::complex<double> xr;
+        if (s == 1)
+        {
+          xr = vec[i + window_size - 1];
+          fft[window_size - (1 << (s - 1)) + k][s - 1] = xr;
+        }
+        else
+          xr = fft[window_size - (1 << (s - 1)) + k][s - 1];
+        fft[window_size - (1 << s) + k][s] =
+            buffer[m + k][s - 1] + tw[window_size - (1 << s) + k][s - 1] * xr;
+        fft[window_size - (1 << s) + k + count][s] =
+            buffer[m + k][s - 1] - tw[window_size - (1 << s) + k + count][s - 1] * xr;
+      }
+      // Update buffer
+      for (size_t k = 0; k < count; k++)
+        buffer[m + k][s - 1] = fft[window_size - (1 << (s - 1)) + k][s - 1];
+    }
+    // Write to output variable after completing all stages
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = fft[j][num_stages - 1];
+  }
+
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> stft::stft_qpff(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t num_stages = log2(window_size) + 1;
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
+      spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 2> tw(window_size, num_stages - 1);
+  rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
+
+  rarray<std::complex<double>, 3>
+      M(window_size / 2, num_stages - 1, window_size / 2),
+      M_prime(window_size / 2, num_stages - 1, window_size / 2);
+
+  rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
+  // Perform FFT on 1st N signals
+  rarray<std::complex<double>, 1> subvec(window_size);
+#pragma omp parallel for default(none) shared(window_size, subvec, vec)
+  for (size_t i = 0; i < window_size; i++)
+    subvec[i] = vec[i];
+  transform(subvec, fft, tw);
+
+#pragma omp parallel for default(none) shared(window_size, spectrogram, fft, num_stages)
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+
+    // Initialize M
+#pragma omp parallel for default(none) shared(num_stages, window_size, M, fft)
+  for (size_t s = 0; s < num_stages - 1; s++)
+  {
+    size_t num_rows = window_size / (1 << (s + 1));
+    for (size_t k = 0; k < num_rows; k++)
+    {
+      size_t row_idx = reverse_bits(k, log2(num_rows));
+      for (size_t m = 0; m < (1 << s); m++)
+      {
+        M[row_idx][s][m] = fft[(2 * k + 1) * (1 << s) + m][s];
+      }
+    }
+  }
+
+  for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
+  {
+    for (size_t s = 0; s < num_stages - 1; s++)
+    {
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        for (size_t idx = 0; idx < window_size / 2; idx++)
+          B[i][1][idx] = M[i][s][idx];
+
+        if (s == 0)
+        {
+          B[i][0][0] = vec[n + window_size - 1 + i];
+          M_prime[i][s][0] = vec[n + window_size - 1 + i];
+        }
+        else
+        {
+          size_t start_idx = i + window_size / (1 << (s + 1));
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M_prime[start_idx][s][idx];
+          }
+          else
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M[start_idx][s][idx];
+        }
+      }
+
+      // Parallel B to compute N/2 FFTs
+      f = stft::stft_qpff_batch(B, tw, window_size, s);
+
+      // Update buffers M and M'
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        size_t col_idx = s + 1;
+
+        if (col_idx < num_stages - 1)
+        {
+          size_t start_idx = i + (window_size / (1 << (col_idx + 1)));
+
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M_prime[start_idx][col_idx][idx] = f[i][idx];
+          }
+          else
+          {
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M[start_idx][col_idx][idx] = f[i][idx];
+          }
+        }
+        else
+          for (size_t idx = 0; idx < window_size; idx++)
+            spectrogram[n + i][idx] = f[i][idx];
+      }
     }
 
-  if (helpFlag)
+    // Swap buffers for next iteration
+    M = M_prime.copy();
+  }
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> stft::stft_qpff_batch(
+    rarray<std::complex<double>, 3> B, rarray<std::complex<double>, 2> tw,
+    size_t window_size, size_t s)
+{
+  size_t count = (1 << s);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
+#pragma omp parallel for default(none) shared(B, tw, window_size, s, count, f)
+  for (size_t i = 0; i < window_size / 2; i++)
   {
-    fprintf(stdout, "usage: %s [-h] [-s] [-a algorithm] [-p parallel] "
-                    "[-o output] [num-samples] [window-size]\n",
-            argv[0]);
-    fprintf(stdout, "num-samples\tlong, size of input signal\n");
-    fprintf(stdout, "window-size\tlong, less than num-samples, power of 2, size of stft window\n");
-    fprintf(stdout, "-h\thelp\n");
-    fprintf(stdout, "-s\tsilent (do not print any output)\n");
-    fprintf(stdout, "-a\tshort time fourier transform algorithm: "
-                    "dft, fft (default), ff\n");
-    fprintf(stdout, "-p\tparallel scheme: omp (default), "
-                    "mpi (must be run with mpirun)\n");
-    fprintf(stdout, "-o\toutput file: "
-                    "[/path/to/file]\n");
-    return 1;
+#pragma omp parallel for default(none) shared(B, tw, window_size, s, count, f, i)
+    for (size_t k = 0; k < count; k++)
+    {
+      std::complex<double> xr, x0, x1;
+      xr = B[i][0][k] * tw[window_size - (1 << (s + 1)) + k][s];
+      x0 = B[i][1][k] + xr;
+      x1 = B[i][1][k] - xr;
+
+      f[i][k] = x0;
+      f[i][k + count] = x1;
+    }
   }
 
-  if (optind + 2 != argc)
+  return f;
+}
+
+rarray<std::complex<double>, 1> stft::fft(
+    const rarray<std::complex<double>, 1> &signal,
+    size_t vec_begin, size_t vec_size)
+{
+  rarray<std::complex<double>, 1> subsignal(vec_size);
+#pragma omp parallel for default(none) shared(signal, vec_begin, vec_size, subsignal)
+  for (size_t i = 0; i < vec_size; i++)
+    subsignal[i] = signal[vec_begin + i];
+
+  stft::transform(subsignal);
+  return subsignal;
+}
+
+bool stft::transform(rarray<std::complex<double>, 1> &vec)
+{
+  // Length variables
+  size_t n = vec.size();
+  int levels = 0; // Compute levels = floor(log2(n))
+  for (size_t temp = n; temp > 1U; temp >>= 1)
+    levels++;
+  if ((size_t)1U << levels != n)
+    return false; // n is not a power of 2
+
+  // Trigonometric tables
+  rarray<std::complex<double>, 1> exptable(n / 2);
+#pragma omp parallel for default(none) shared(exptable, n)
+  for (size_t i = 0; i < n / 2; i++)
+    exptable[i] = std::polar(1.0, -2. * PI * i / n);
+
+    // Bit-reversed addressing permutation
+#pragma omp parallel for default(none) shared(levels, vec, n)
+  for (size_t i = 0; i < n; i++)
   {
-    fprintf(stderr, "Invalid arguments. See -h for usage.\n");
-    return 1;
+    size_t j = stft::reverse_bits(i, levels);
+    if (j > i)
+    {
+      std::complex<double> temp = vec[i];
+      vec[i] = vec[j];
+      vec[j] = temp;
+    }
   }
 
-  unsigned long num_samples = 0;
-  unsigned long window_size = 0;
-  try
+  // Cooley-Tukey decimation-in-time radix-2 FFT
+  for (size_t size = 2; size <= n; size *= 2)
   {
-    num_samples = std::stoul(*(argv + optind));
-  }
-  catch (std::invalid_argument const &arg)
-  {
-    fprintf(stderr, "Invalid arguments [num-samples]. See -h for usage.\n");
-    return 1;
-  }
-  catch (std::out_of_range const &arg)
-  {
-    fprintf(stderr, "Out of range arguments [num-samples]. See -h for usage.\n");
-    return 1;
-  }
-  try
-  {
-    window_size = std::stoul(*(argv + optind + 1));
-  }
-  catch (std::invalid_argument const &arg)
-  {
-    fprintf(stderr, "Invalid arguments [window-size]. See -h for usage.\n");
-    return 1;
-  }
-  catch (std::out_of_range const &arg)
-  {
-    fprintf(stderr, "Out of range arguments [window-size]. See -h for usage.\n");
-    return 1;
+    size_t halfsize = size / 2;
+    size_t tablestep = n / size;
+    for (size_t i = 0; i < n; i += size)
+    {
+      for (size_t j = i, k = 0; j < i + halfsize; j++, k += tablestep)
+      {
+        size_t l = j + halfsize;
+        std::complex<double> temp = vec[l] * exptable[k];
+        vec[l] = vec[j] - temp;
+        vec[j] += temp;
+      }
+    }
+    if (size == n) // Prevent overflow in 'size *= 2'
+      break;
   }
 
-  if (num_samples < window_size)
+  return true;
+}
+
+bool stft::transform(rarray<std::complex<double>, 1> &vec,
+                    rarray<std::complex<double>, 2> &fft,
+                    rarray<std::complex<double>, 2> &tw)
+{
+  // Length variables
+  size_t n = vec.size();
+  int levels = 0; // Compute levels = floor(log2(n))
+  for (size_t temp = n; temp > 1U; temp >>= 1)
+    levels++;
+  if ((size_t)1U << levels != n)
+    return false; // n is not a power of 2
+
+  // Trigonometric tables
+  rarray<std::complex<double>, 1> exptable(n / 2);
+#pragma omp parallel for default(none) shared(exptable, n)
+  for (size_t i = 0; i < n / 2; i++)
+    exptable[i] = std::polar(1.0, -2. * PI * i / n);
+
+    // Bit-reversed addressing permutation
+#pragma omp parallel for default(none) shared(vec, levels, n)
+  for (size_t i = 0; i < n; i++)
   {
-    fprintf(stderr, "num-samples must be greater than window-size. See -h for usage.\n");
-    return 1;
+    size_t j = stft::reverse_bits(i, levels);
+    if (j > i)
+    {
+      std::complex<double> temp = vec[i];
+      vec[i] = vec[j];
+      vec[j] = temp;
+    }
   }
-  if (window_size == 0 || num_samples == 0)
+#pragma omp parallel for default(none) shared(fft, vec, n)
+  for (size_t i = 0; i < n; i++)
+    fft[i][0] = vec[i];
+
+  // Cooley-Tukey decimation-in-time radix-2 FFT
+  for (size_t size = 2; size <= n; size *= 2)
   {
-    fprintf(stderr, "num-samples and window-size must be positive. See -h for usage.\n");
-    return 1;
-  }
-  if ((window_size & (window_size - 1)) != 0)
-  {
-    fprintf(stderr, "window-size must be power of 2. See -h for usage.\n");
-    return 1;
+    size_t halfsize = size / 2;
+    size_t tablestep = n / size;
+    for (size_t i = 0; i < n; i += size)
+    {
+      for (size_t j = i, k = 0; j < i + halfsize; j++, k += tablestep)
+      {
+        size_t l = j + halfsize;
+        std::complex<double> temp = vec[l] * exptable[k];
+        vec[l] = vec[j] - temp;
+        vec[j] += temp;
+        fft[j][log2(size)] = vec[j];
+        fft[l][log2(size)] = vec[l];
+        tw[j][log2(size) - 1] = exptable[k];
+        tw[l][log2(size) - 1] = exptable[k];
+      }
+    }
+    if (size == n) // Prevent overflow in 'size *= 2'
+      break;
   }
 
-  rarray<std::complex<double>, 1> signal(num_samples);
-  for (size_t i = 0; i < num_samples; i++)
-    signal[i] = std::complex<double>(double(i), 0.0);
-  // std::cout << signal << "\n";
+  return true;
+}
 
-  int rank, size, provided;
-  if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
+size_t stft::reverse_bits(size_t val, int width)
+{
+  size_t result = 0;
+  for (int i = 0; i < width; i++, val >>= 1)
+    result = (result << 1) | (val & 1U);
+  return result;
+}
+
+rarray<std::complex<double>, 2> stft_mpi::stft_dft(
+    rarray<std::complex<double>, 1> &vec,
+    size_t window_size, size_t window_step)
+{
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 1> dft;
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  size_t chunk_size = spectrogram_size / size;
+  size_t start_idx = rank * chunk_size;
+  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
+
+#pragma omp parallel for default(none) shared(start_idx, end_idx, vec, window_step, window_size, dft, spectrogram)
+  for (size_t i = start_idx; i < end_idx; i++)
   {
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    dft = stft::dft(vec, i * window_step, window_size);
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = dft[j];
   }
-  else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-  {
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-  }
+
+  if (rank == 0)
+    for (int p = 1; p < size; p++)
+    {
+      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
+      MPI_Recv(&spectrogram[p * chunk_size][0],
+               received_chunk_size * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
   else
+    MPI_Send(&spectrogram[start_idx][0],
+             (end_idx - start_idx) * window_size, MPI_DOUBLE_COMPLEX, 0, 0,
+             MPI_COMM_WORLD);
+
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> stft_mpi::stft_fft(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> spectrogram(spectrogram_size, window_size);
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  size_t chunk_size = spectrogram_size / size;
+  size_t start_idx = rank * chunk_size;
+  size_t end_idx = (rank == size - 1) ? spectrogram_size : (rank + 1) * chunk_size;
+
+  for (size_t i = start_idx; i < end_idx; i++)
   {
-    rank = 0;
-    size = 0;
-    provided = 0;
+    rarray<std::complex<double>, 1> fft = stft::fft(vec, i * window_step, window_size);
+    for (size_t j = 0; j < window_size; j++)
+      spectrogram[i][j] = fft[j];
   }
 
-  rarray<std::complex<double>, 2> stft;
-  stft = compute_stft(signal, window_size, (const char *)algorithm, (const char *)parallel);
+  if (rank == 0)
+    for (int p = 1; p < size; p++)
+    {
+      size_t received_chunk_size = (p == size - 1) ? spectrogram_size - p * chunk_size : chunk_size;
+      MPI_Recv(&spectrogram[p * chunk_size][0], received_chunk_size * window_size,
+               MPI_DOUBLE_COMPLEX, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+  else
+    MPI_Send(&spectrogram[start_idx][0], (end_idx - start_idx) * window_size,
+             MPI_DOUBLE_COMPLEX, 0, 0, MPI_COMM_WORLD);
+
+  return spectrogram;
+}
+
+rarray<std::complex<double>, 2> stft_mpi::stft_qpff(
+    rarray<std::complex<double>, 1> &vec, size_t window_size, size_t window_step)
+{
+  size_t num_stages = log2(window_size) + 1;
+  size_t spectrogram_size = floor((vec.size() - window_size) / float(window_step)) + 1;
+  rarray<std::complex<double>, 2> fft(window_size, num_stages),
+      spectrogram(spectrogram_size, window_size);
+  rarray<std::complex<double>, 2> tw(window_size, num_stages - 1);
+  rarray<std::complex<double>, 2> buffer(window_size / 2, num_stages);
+
+  rarray<std::complex<double>, 3>
+      M(window_size / 2, num_stages - 1, window_size / 2),
+      M_prime(window_size / 2, num_stages - 1, window_size / 2);
+
+  rarray<std::complex<double>, 3> B(window_size / 2, 2, window_size / 2);
+  rarray<std::complex<double>, 2> f(window_size / 2, window_size);
+
+  // Perform FFT on 1st N signals
+  rarray<std::complex<double>, 1> subvec(window_size);
+  for (size_t i = 0; i < window_size; i++)
+    subvec[i] = vec[i];
+  stft::transform(subvec, fft, tw);
+
+  for (size_t i = 0; i < window_size; i++)
+    spectrogram[0][i] = fft[i][num_stages - 1];
+
+  // Initialize M
+  for (size_t s = 0; s < num_stages - 1; s++)
+  {
+    size_t num_rows = window_size / (1 << (s + 1));
+    for (size_t k = 0; k < num_rows; k++)
+    {
+      size_t row_idx = stft::reverse_bits(k, log2(num_rows));
+      for (size_t m = 0; m < (1 << s); m++)
+      {
+        M[row_idx][s][m] = fft[(2 * k + 1) * (1 << s) + m][s];
+      }
+    }
+  }
+
+  for (size_t n = 1; window_size / 2 - 1 + n <= vec.size() - window_size; n += window_size / 2)
+  {
+    for (size_t s = 0; s < num_stages - 1; s++)
+    {
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        for (size_t idx = 0; idx < window_size / 2; idx++)
+          B[i][1][idx] = M[i][s][idx];
+
+        if (s == 0)
+        {
+          B[i][0][0] = vec[n + window_size - 1 + i];
+          M_prime[i][s][0] = vec[n + window_size - 1 + i];
+        }
+        else
+        {
+          size_t start_idx = i + window_size / (1 << (s + 1));
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M_prime[start_idx][s][idx];
+          }
+          else
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              B[i][0][idx] = M[start_idx][s][idx];
+        }
+      }
+
+      // Parallel B
+      stft_mpi::stft_qpff_batch(B, tw, window_size, s, f);
+
+      // Collect results
+      for (size_t i = 0; i < window_size / 2; i++)
+      {
+        size_t col_idx = s + 1;
+
+        if (col_idx < num_stages - 1)
+        {
+          size_t start_idx = i + (window_size / (1 << (col_idx + 1)));
+
+          if (start_idx >= window_size / 2)
+          {
+            start_idx = start_idx % (window_size / 2);
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M_prime[start_idx][col_idx][idx] = f[i][idx];
+          }
+          else
+          {
+            for (size_t idx = 0; idx < window_size / 2; idx++)
+              M[start_idx][col_idx][idx] = f[i][idx];
+          }
+        }
+        else
+        {
+          for (size_t idx = 0; idx < window_size; idx++)
+            spectrogram[n + i][idx] = f[i][idx];
+        }
+      }
+    }
+
+    M = M_prime.copy();
+  }
+
+  return spectrogram;
+}
+
+void stft_mpi::stft_qpff_batch(
+    rarray<std::complex<double>, 3> B, rarray<std::complex<double>, 2> tw,
+    size_t window_size, size_t s, rarray<std::complex<double>, 2> f)
+{
+  int rank, size, chunksize, remaining;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  MPI_Bcast(B.data(), B.size(), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD);
+
+  chunksize = (window_size / 2) / size;
+  remaining = (window_size / 2) % size;
+
+  size_t count = (1 << s);
+
+  int local_chunksize = rank < remaining ? chunksize + 1 : chunksize;
+  int offset = rank * chunksize + (remaining > rank ? rank : remaining);
+  std::complex<double> local_f[local_chunksize * window_size];
+
+  // Compute local f for this process
+#pragma omp parallel for default(none) shared(local_chunksize, offset, count, B, tw, window_size, s, local_f)
+  for (size_t i = 0; i < local_chunksize; i++)
+  {
+    for (size_t k = 0; k < count; k++)
+    {
+      std::complex<double> xr, x0, x1;
+      xr = B[i + offset][0][k] * tw[window_size - (1 << (s + 1)) + k][s];
+      x0 = B[i + offset][1][k] + xr;
+      x1 = B[i + offset][1][k] - xr;
+
+      local_f[i * window_size + k] = x0;
+      local_f[i * window_size + (k + count)] = x1;
+    }
+  }
 
   if (rank == 0)
   {
-    if (outputFile != NULL)
+    // Copy from local_f of rank 0 to global f
+    for (size_t i = 0; i < local_chunksize; i++)
     {
-      std::ofstream outfile;
-      outfile.open(outputFile);
-      if (outfile.is_open())
+      for (size_t k = 0; k < count; k++)
       {
-        outfile << stft << "\n";
-        outfile.close();
-      }
-      else
-      {
-        fprintf(stderr, "Error opening output file.\n");
-        return 1;
+        f[i][k] = local_f[i * window_size + k];
+        f[i][k + count] = local_f[i * window_size + (k + count)];
       }
     }
-    else if (silentFlag == 0)
-      std::cout << stft << "\n";
-  }
 
-  if (parallel != NULL && strncmp(parallel, "mpi", strlen("mpi")) == 0)
-    MPI_Finalize();
-  else if (parallel != NULL && strncmp(parallel, "hybrid", strlen("hybrid")) == 0)
-    MPI_Finalize();
-  return 0;
+    // Receive from remaining processes
+#pragma omp parallel for default(none) shared(size, chunksize, remaining, window_size, f, count, ompi_mpi_comm_world, ompi_mpi_dblcplex)
+    for (int p = 1; p < size; p++)
+    {
+      int recv_chunksize = p < remaining ? chunksize + 1 : chunksize;
+      int recv_offset = p * chunksize + (remaining > p ? p : remaining);
+      std::complex<double> *recv_f = new std::complex<double>[recv_chunksize * window_size];
+      MPI_Recv(recv_f, recv_chunksize * window_size, MPI_DOUBLE_COMPLEX, p, 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+      // Copy from recv array to global f
+      for (size_t i = 0; i < recv_chunksize; i++)
+      {
+        for (size_t k = 0; k < count; k++)
+        {
+          f[i + recv_offset][k] = recv_f[i * window_size + k];
+          f[i + recv_offset][k + count] = recv_f[i * window_size + (k + count)];
+        }
+      }
+    }
+  }
+  else
+  {
+    MPI_Send(local_f, local_chunksize * window_size,
+             MPI_DOUBLE_COMPLEX, 0, 0, MPI_COMM_WORLD);
+  }
 }
