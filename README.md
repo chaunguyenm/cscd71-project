@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> This repository has been archived. Please refer to [this repository](https://github.com/chaunguyenm/stft) for the active project.
+
+
 # Parallelizing Short-time Fourier Transforms 
 
 An implentation and analysis of parallelization of several approaches to calculating short-time Fourier transforms.
